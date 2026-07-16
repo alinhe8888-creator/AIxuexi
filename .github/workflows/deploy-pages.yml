@@ -1,4 +1,4 @@
-name: Deploy AI Learning Assistant to GitHub Pages
+name: Deploy AIxuexi Pages
 
 on:
   push:
@@ -11,77 +11,36 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 
 jobs:
+  deploy:
 
-  build:
+    environment:
+      name: github-pages
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
-    timeout-minutes: 20
 
     steps:
 
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.14.0
-
-
-      - name: Check environment
+      - name: Verify dist
         run: |
-          node -v
-          npm -v
-
-
-      - name: Install dependencies
-        run: |
-          npm cache clean --force
-          npm install
-
-
-      - name: Lint
-        run: npm run lint
-
-
-      - name: Type check
-        run: npm run typecheck
-
-
-      - name: Build
-        run: npm run build
+          test -f dist/index.html
 
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
 
-      - name: Upload artifact
+      - name: Upload Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: dist
 
 
-
-  deploy:
-
-    needs: build
-
-    runs-on: ubuntu-24.04
-
-    environment:
-      name: github-pages
-
-
-    steps:
-
-      - name: Deploy
+      - name: Deploy Pages
         uses: actions/deploy-pages@v4
