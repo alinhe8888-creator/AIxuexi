@@ -1,5 +1,8 @@
 # 知航 AI · 高中学习助手
 
+> **当前 GitHub Pages 稳定部署版**：仓库已包含预构建的 `dist/`。GitHub Actions 不执行 `npm install`、`npm ci` 或前端构建，只校验并直接发布 `dist/`，用于规避 GitHub Runner 的 npm `Exit handler never called` 异常。
+
+
 一个可直接部署到 GitHub Pages 的完整前端项目。当前版本使用模拟 AI、模拟 OCR 和浏览器 `localStorage`，无需服务器即可体验完整学习闭环；后续可在同一仓库中接入 Cloudflare Workers、D1、R2、正式 AI/OCR 和知识库。
 
 ## 1. 当前成品包含什么
