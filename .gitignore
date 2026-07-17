@@ -26,3 +26,4 @@ backend/.env
 *.sw?
 dist-student
 dist-parent
+.wrangler
