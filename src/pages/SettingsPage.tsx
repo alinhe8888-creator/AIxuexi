@@ -1,8 +1,9 @@
-import { Download, Moon, RefreshCw, Save, Settings, Sun, Upload } from 'lucide-react'
+import { Copy, Download, KeyRound, Moon, RefreshCw, Save, Settings, Sun, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Badge, Button, Callout, Card, Modal, PageHeader, SectionTitle } from '../components/ui'
 import { useAppStore } from '../store/useAppStore'
 import type { AppSettings, StudentProfile, Subject } from '../types'
+import { studentApi } from '../services/studentApi'
 
 const allSubjects: Subject[] = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治']
 const textbookOptions: Partial<Record<Subject, string[]>> = {
@@ -14,6 +15,8 @@ export function SettingsPage() {
   const [profile, setProfile] = useState<StudentProfile>({ ...state.profile })
   const [settings, setSettings] = useState<AppSettings>({ ...state.settings })
   const [resetOpen, setResetOpen] = useState(false)
+  const [pairCode, setPairCode] = useState<{ code: string; expiresAt: string } | null>(null)
+  const [pairLoading, setPairLoading] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
 
   const toggleSubject = (subject: Subject) => {
@@ -22,6 +25,19 @@ export function SettingsPage() {
 
   const saveProfile = () => updateProfile(profile)
   const saveSettings = () => updateSettings(settings)
+
+  const createPairCode = async () => {
+    setPairLoading(true)
+    try {
+      const result = await studentApi.createPairCode()
+      setPairCode(result)
+      notify('success', '家庭查看码已生成', '请在 15 分钟内交给监护人使用。')
+    } catch (error) {
+      notify('error', '绑定码生成失败', error instanceof Error ? error.message : '请稍后重试')
+    } finally {
+      setPairLoading(false)
+    }
+  }
 
   const downloadData = () => {
     const blob = new Blob([exportData()], { type: 'application/json' })
@@ -47,7 +63,7 @@ export function SettingsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="学生档案与数据管理" title="个人设置" description="管理年级、选科、教材版本、学习强度、AI 讲解方式和本地数据。" actions={<Badge tone="success">数据仅保存在当前浏览器</Badge>} />
+      <PageHeader eyebrow="学生档案与数据管理" title="个人设置" description="管理年级、选科、教材版本、学习强度、AI 讲解方式和本地数据。" actions={<Badge tone="success">本地保存 + 云端同步</Badge>} />
 
       <div className="settings-layout">
         <div className="stack">
@@ -88,6 +104,12 @@ export function SettingsPage() {
             <SectionTitle title="界面主题" />
             <div className="theme-options"><button className={settings.theme === 'light' ? 'active' : ''} onClick={() => setSettings({ ...settings, theme: 'light' })}><Sun size={21} /><strong>浅色</strong></button><button className={settings.theme === 'dark' ? 'active' : ''} onClick={() => setSettings({ ...settings, theme: 'dark' })}><Moon size={21} /><strong>深色</strong></button><button className={settings.theme === 'system' ? 'active' : ''} onClick={() => setSettings({ ...settings, theme: 'system' })}><Settings size={21} /><strong>跟随系统</strong></button></div>
             <Button variant="secondary" onClick={saveSettings}>应用主题</Button>
+          </Card>
+
+          <Card>
+            <SectionTitle title="家庭数据授权" description="生成一次性家庭查看码，仅用于授权监护人读取学习摘要" />
+            <Callout title="权限隔离">学生端不会提供任何监护人页面入口。此一次性授权码只允许已认证监护人读取学习摘要，不能修改答题、错题或学习计划。</Callout>
+            {pairCode ? <div className="student-pair-code"><span>家庭查看码</span><strong>{pairCode.code}</strong><small>有效期至 {new Date(pairCode.expiresAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</small><Button variant="secondary" onClick={() => { void navigator.clipboard.writeText(pairCode.code); notify('success', '绑定码已复制') }}><Copy size={16} />复制绑定码</Button></div> : <Button variant="secondary" onClick={() => void createPairCode()} disabled={pairLoading}><KeyRound size={17} />{pairLoading ? '正在生成…' : '生成 6 位家庭查看码'}</Button>}
           </Card>
 
           <Card>

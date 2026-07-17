@@ -8,7 +8,6 @@ export function RequireRole({ role, children }: { role: UserRole; children: Reac
   const { user, status } = useAuth()
   const location = useLocation()
   if (status === 'loading') return <div className="full-screen-state"><LoadingState text="正在确认登录状态…" /></div>
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
-  if (user.role !== role) return <Navigate to={user.role === 'parent' ? '/parent' : '/'} replace />
+  if (!user || user.role !== role) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return children
 }

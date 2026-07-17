@@ -1,0 +1,28 @@
+AIxuexi v1.4.0 交付说明
+========================
+
+本包用于解决：
+1. 点击新菜单白屏，刷新后才显示；
+2. Render缺少OCR、AI、知识库和同步接口导致404；
+3. 学生端与家长端入口不完全隔离；
+4. localStorage大图或多账号数据互相影响；
+5. Cloudflare深层路由、缓存和Render CORS配置不稳定。
+
+重要文件：
+- README.md：项目结构和部署参数
+- API_ENDPOINTS.md：完整后端接口
+- TEST_REPORT.md / 验收报告.txt：真实自动化验收范围
+- FINAL_CHECK.log：最后一次完整检查日志
+- CODEX部署提示词.txt：交给Codex执行GitHub、Render、Cloudflare发布和生产验收
+- CLOUDFLARE_DEPLOYMENT.md：学生端与家长端双项目配置
+
+使用方法：
+1. 解压本ZIP；
+2. 在Codex中打开解压后的整个文件夹；
+3. 把“CODEX部署提示词.txt”完整发给Codex；
+4. 允许Codex使用当前Chrome完成GitHub Web授权、Render和Cloudflare部署；
+5. Codex必须完成提示词中的生产浏览器验收后才能宣布结束。
+
+真实限制：
+- 未在Render配置支持图片的AI模型时，OCR/AI接口会返回可操作的结构化兜底结果，不代表真实OCR准确率。
+- 当前执行环境阻止本地Chromium访问localhost，因此真实Chrome逐页点击必须在正式Cloudflare地址由Codex完成。

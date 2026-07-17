@@ -72,7 +72,7 @@ export function PhotoExplainPage() {
       setCorrectAnswer(result.correctAnswer)
       setFormat(result.questionFormat)
       setOcrStatus('done')
-      notify('success', '模拟识别完成', '请检查题目文字并手动修正识别错误。')
+      notify('success', '题目识别完成', '请检查题目文字并手动修正识别错误。')
     } catch (error) {
       setOcrStatus('error')
       setOcrError(error instanceof Error ? error.message : '识别失败')
@@ -127,7 +127,7 @@ export function PhotoExplainPage() {
             <label>科目<select value={subject} onChange={(event) => setSubject(event.target.value as Subject)}>{subjects.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} /></label>
             <label>题型<select value={format} onChange={(event) => setFormat(event.target.value as QuestionFormat)}>{['选择题', '填空题', '判断题', '解答题', '默写题'].map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} /></label>
           </div>
-          <Button className="full-width" onClick={() => void recognize()} disabled={!image || ocrStatus === 'loading'}>{ocrStatus === 'loading' ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}{ocrStatus === 'loading' ? '正在识别题目…' : '开始模拟识别'}</Button>
+          <Button className="full-width" onClick={() => void recognize()} disabled={!image || ocrStatus === 'loading'}>{ocrStatus === 'loading' ? <LoaderCircle className="spin" size={18} /> : <Sparkles size={18} />}{ocrStatus === 'loading' ? '正在识别题目…' : '开始识别题目'}</Button>
           {ocrStatus === 'error' && <Callout tone="danger" title="识别失败">{ocrError}<div className="inline-actions"><Button size="sm" variant="secondary" onClick={() => void recognize()}>重新识别</Button><Button size="sm" variant="ghost" onClick={() => { setOcrStatus('done'); setContent(''); }}>手动录入</Button></div></Callout>}
         </Card>
 
@@ -138,7 +138,7 @@ export function PhotoExplainPage() {
               <label>题目内容<textarea rows={6} value={content} onChange={(event) => setContent(event.target.value)} placeholder="识别结果会显示在这里，也可以直接手动输入题目。" /></label>
               <div className="form-row two"><label>章节<input value={chapter} onChange={(event) => setChapter(event.target.value)} placeholder="例如：函数与导数" /></label><label>知识点<input value={knowledgePoint} onChange={(event) => setKnowledgePoint(event.target.value)} placeholder="例如：导数的几何意义" /></label></div>
               <label>你的原答案<textarea rows={2} value={studentAnswer} onChange={(event) => setStudentAnswer(event.target.value)} placeholder="填写你当时的答案，便于判断错因。" /></label>
-              <label>参考答案（可修改）<textarea rows={2} value={correctAnswer} onChange={(event) => setCorrectAnswer(event.target.value)} placeholder="当前阶段由模拟服务返回，后续可接入题库或 AI。" /></label>
+              <label>参考答案（可修改）<textarea rows={2} value={correctAnswer} onChange={(event) => setCorrectAnswer(event.target.value)} placeholder="由后端识别或知识库返回，请在保存前核对。" /></label>
               <Button onClick={() => void explain()} disabled={!content.trim() || aiLoading}>{aiLoading ? <LoaderCircle className="spin" size={18} /> : <BrainIcon />}{aiLoading ? '正在生成分步讲解…' : '确认题目并开始讲解'}</Button>
             </div>
           )}

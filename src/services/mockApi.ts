@@ -4,7 +4,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const subjectTemplates: Record<Subject, { chapter: string; point: string; content: string; answer: string; format: QuestionFormat }> = {
   语文: { chapter: '古诗词鉴赏', point: '诗歌情感与表现手法', content: '阅读诗句，结合意象分析作者表达的思想感情。', answer: '先概括意象营造的氛围，再结合关键词说明情感。', format: '解答题' },
-  数学: { chapter: '函数与导数', point: '导数的几何意义', content: '已知函数 f(x)=x²-4x+5，求曲线在 x=1 处的切线方程。', answer: 'y=-2x+3', format: '解答题' },
+  数学: { chapter: '函数与导数', point: '导数的几何意义', content: '已知函数 f(x)=x²-4x+5，求曲线在 x=1 处的切线方程。', answer: 'y=-2x+4', format: '解答题' },
   英语: { chapter: '非谓语动词', point: '分词作状语', content: '____ by the teacher, the student corrected the mistake at once. (encourage)', answer: 'Encouraged', format: '填空题' },
   物理: { chapter: '机械能守恒', point: '机械能守恒条件', content: '小球沿光滑轨道下滑，不计空气阻力。判断机械能是否守恒并说明理由。', answer: '守恒；只有重力做功。', format: '解答题' },
   化学: { chapter: '化学平衡', point: '平衡移动判断', content: '对于放热反应，升高温度后平衡向哪个方向移动？说明理由。', answer: '向吸热方向移动，即逆反应方向。', format: '解答题' },

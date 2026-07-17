@@ -3,11 +3,10 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { RequireRole } from './auth/RequireRole'
 import { useAuth } from './auth/useAuth'
 import { Layout } from './components/Layout'
-import { ParentLayout } from './components/ParentLayout'
-import { ParentDataProvider } from './parent/ParentDataContext'
+import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { AppStoreProvider } from './store/AppStore'
 import { useAppStore } from './store/useAppStore'
-import { AuthPage } from './pages/AuthPage'
+import { StudentAuthPage } from './pages/StudentAuthPage'
 import { ChallengePage } from './pages/ChallengePage'
 import { DailyPlanPage } from './pages/DailyPlanPage'
 import { HomePage } from './pages/HomePage'
@@ -22,11 +21,6 @@ import { QuizPage } from './pages/QuizPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SimulationPage } from './pages/SimulationPage'
-import { ParentHomePage } from './pages/parent/ParentHomePage'
-import { ParentMistakesPage } from './pages/parent/ParentMistakesPage'
-import { ParentProgressPage } from './pages/parent/ParentProgressPage'
-import { ParentReportsPage } from './pages/parent/ParentReportsPage'
-import { ParentSettingsPage } from './pages/parent/ParentSettingsPage'
 import './App.css'
 
 function ScrollToTop() {
@@ -38,11 +32,11 @@ function ScrollToTop() {
 function PublicOnly({ children }: { children: ReactNode }) {
   const { user, status } = useAuth()
   if (status === 'loading') return null
-  if (user) return <Navigate to={user.role === 'parent' ? '/parent' : '/'} replace />
+  if (user) return <Navigate to="/" replace />
   return children
 }
 
-function StudentApp() {
+function StudentLearningApp() {
   const { state } = useAppStore()
   const location = useLocation()
   if (!state.profile.onboarded && location.pathname !== '/onboarding') return <Navigate to="/onboarding" replace />
@@ -50,7 +44,8 @@ function StudentApp() {
   if (location.pathname === '/onboarding') return <OnboardingPage />
   return (
     <Layout>
-      <div key={location.pathname} className="route-view">
+      <div className="route-view">
+        <AppErrorBoundary key={location.pathname}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/photo-explain" element={<PhotoExplainPage />} />
@@ -66,40 +61,20 @@ function StudentApp() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        </AppErrorBoundary>
       </div>
     </Layout>
   )
 }
 
-function ParentApp() {
-  const location = useLocation()
-  return (
-    <ParentDataProvider>
-      <ParentLayout>
-        <div key={location.pathname} className="route-view">
-          <Routes>
-            <Route path="/" element={<ParentHomePage />} />
-            <Route path="/progress" element={<ParentProgressPage />} />
-            <Route path="/mistakes" element={<ParentMistakesPage />} />
-            <Route path="/reports" element={<ParentReportsPage />} />
-            <Route path="/settings" element={<ParentSettingsPage />} />
-            <Route path="*" element={<Navigate to="/parent" replace />} />
-          </Routes>
-        </div>
-      </ParentLayout>
-    </ParentDataProvider>
-  )
-}
-
-export default function App() {
+export default function StudentPortal() {
   return (
     <>
       <ScrollToTop />
       <Routes>
-        <Route path="/login" element={<PublicOnly><AuthPage /></PublicOnly>} />
-        <Route path="/register" element={<PublicOnly><AuthPage /></PublicOnly>} />
-        <Route path="/parent/*" element={<RequireRole role="parent"><ParentApp /></RequireRole>} />
-        <Route path="/*" element={<RequireRole role="student"><AppStoreProvider><StudentApp /></AppStoreProvider></RequireRole>} />
+        <Route path="/login" element={<PublicOnly><StudentAuthPage /></PublicOnly>} />
+        <Route path="/register" element={<PublicOnly><StudentAuthPage /></PublicOnly>} />
+        <Route path="/*" element={<RequireRole role="student"><AppStoreProvider><StudentLearningApp /></AppStoreProvider></RequireRole>} />
       </Routes>
     </>
   )

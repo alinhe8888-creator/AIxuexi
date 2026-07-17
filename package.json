@@ -1,14 +1,23 @@
 {
-  "name": "aixuexi-parent-portal",
+  "name": "aixuexi-separated-portals",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode student",
+    "dev:student": "vite --mode student",
+    "dev:parent": "vite --mode parent",
     "typecheck": "tsc -b --pretty false",
-    "lint": "oxlint",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "lint": "oxlint src backend/src",
+    "build": "npm run build:student",
+    "build:student": "tsc -b && vite build --mode student",
+    "build:parent": "tsc -b && vite build --mode parent",
+    "build:all": "npm run build:student && npm run build:parent",
+    "preview:student": "vite preview --outDir dist-student",
+    "preview:parent": "vite preview --outDir dist-parent",
+    "check": "npm run lint && npm run typecheck && npm run build:all && npm run verify:routes && npm --prefix backend run typecheck && npm --prefix backend run build && npm --prefix backend run test:api",
+    "test:api": "npm --prefix backend run test:api",
+    "verify:routes": "node scripts/verify-routes.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",
@@ -25,5 +34,5 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   },
-  "description": "AI高中学习助手：学生端、受保护家长端、Cloudflare前端与Render后端"
+  "description": "AI高中学习系统：完全隔离的学生端、家长端，以及共享Render后端数据"
 }

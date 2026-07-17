@@ -729,8 +729,13 @@ input:focus, textarea:focus, select:focus { border-color: rgba(98,91,246,.6); bo
 }
 
 /* Authentication and parent portal */
-.route-view { animation: route-enter .18s ease; }
-@keyframes route-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.route-view { min-height: 320px; }
+.route-error { min-height: 360px; display: flex; align-items: flex-start; gap: 16px; padding: 30px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+.route-error-icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: var(--danger); background: var(--danger-soft); flex: 0 0 auto; }
+.route-error h2 { margin: 2px 0 8px; font-size: 21px; }
+.route-error p { margin: 0 0 8px; max-width: 660px; }
+.route-error small { color: var(--text-3); }
+.route-error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .full-screen-state { min-height: 100vh; display: grid; place-items: center; }
 .student-logout, .parent-logout { width: 100%; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 11px; min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; font-weight: 700; }
 .student-logout:hover, .parent-logout:hover { color: var(--danger); border-color: rgba(209,67,67,.26); background: var(--danger-soft); }

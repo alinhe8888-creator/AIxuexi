@@ -13,17 +13,40 @@ import { useAuth } from '../auth/useAuth'
 import { studentApi } from '../services/studentApi'
 import { clamp, getMasteryLevel, getRiskLevel, ratingMasteryDelta, reviewIntervalDays } from '../utils/learning'
 
-const STORAGE_KEY = 'ai-high-school-assistant:v1'
+const STORAGE_KEY_PREFIX = 'ai-high-school-assistant:v2'
+const storageKey = (userId?: string) => `${STORAGE_KEY_PREFIX}:${userId || 'anonymous'}`
 
-const loadState = (): AppState => {
+const loadState = (userId?: string): AppState => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey(userId))
     if (!raw) return createSeedState()
     const parsed = JSON.parse(raw) as AppState
     if (!parsed.version || !parsed.profile || !Array.isArray(parsed.mistakes)) return createSeedState()
     return parsed
   } catch {
     return createSeedState()
+  }
+}
+
+const persistState = (userId: string | undefined, state: AppState) => {
+  const key = storageKey(userId)
+  try {
+    localStorage.setItem(key, JSON.stringify(state))
+    return
+  } catch (error) {
+    console.warn('Local state exceeded browser storage; retrying without uploaded images.', error)
+  }
+  try {
+    const compact: AppState = {
+      ...state,
+      questions: state.questions.map(({ imageDataUrl: _imageDataUrl, ...item }) => item),
+      mistakes: state.mistakes.map(({ imageDataUrl: _imageDataUrl, ...item }) => item),
+      papers: state.papers.map((paper) => ({ ...paper, imageDataUrls: [] })),
+    }
+    localStorage.setItem(key, JSON.stringify(compact))
+    window.dispatchEvent(new CustomEvent('aixuexi:storage-compacted'))
+  } catch (error) {
+    console.error('Unable to persist local learning state.', error)
   }
 }
 
@@ -81,17 +104,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const userId = user?.id
   const userRole = user?.role
-  const [state, setState] = useState<AppState>(loadState)
+  const [state, setState] = useState<AppState>(() => loadState(userId))
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const [cloudReady, setCloudReady] = useState(false)
   const skipNextCloudPush = useRef(true)
+  const hydratedUser = useRef<string | undefined>(undefined)
   const stateRef = useRef(state)
 
   useEffect(() => {
     stateRef.current = state
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    persistState(userId, state)
     document.documentElement.dataset.theme = state.settings.theme
-  }, [state])
+  }, [state, userId])
+
+  useEffect(() => {
+    if (!userId || userRole !== 'student' || hydratedUser.current === userId) return
+    hydratedUser.current = userId
+    stateRef.current = loadState(userId)
+    setState(stateRef.current)
+  }, [userId, userRole])
 
   useEffect(() => {
     let cancelled = false

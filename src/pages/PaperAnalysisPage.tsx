@@ -42,7 +42,7 @@ export function PaperAnalysisPage() {
       const result = await learningApi.ocr.recognizePaper({ subject, imageDataUrls: images.map((item) => item.data) })
       setQuestions(result)
       setStatus('ready')
-      notify('success', '试卷题目已模拟识别', '请逐题核对得分、答案和错因。')
+      notify('success', '试卷题目已识别', '请逐题核对得分、答案和错因。')
     } catch {
       setStatus('idle')
       notify('error', '试卷识别失败')
@@ -94,13 +94,13 @@ export function PaperAnalysisPage() {
             {images.length < 6 && <button className="paper-add-image" onClick={() => inputRef.current?.click()}><Upload size={23} /><strong>添加试卷图片</strong><span>JPG / PNG / WEBP</span></button>}
             <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={(event) => void handleFiles(event.target.files)} />
           </div>
-          <Button className="full-width" onClick={() => void recognize()} disabled={!images.length || status === 'loading'}>{status === 'loading' ? <LoaderCircle className="spin" size={18} /> : <FileSearch size={18} />}{status === 'loading' ? '正在模拟识别多道题…' : '识别试卷并拆分题目'}</Button>
+          <Button className="full-width" onClick={() => void recognize()} disabled={!images.length || status === 'loading'}>{status === 'loading' ? <LoaderCircle className="spin" size={18} /> : <FileSearch size={18} />}{status === 'loading' ? '正在识别并拆分题目…' : '识别试卷并拆分题目'}</Button>
         </Card>
 
         <Card>
           <SectionTitle title="历史试卷" description="已保存的分析会保留在浏览器中" />
           {state.papers.length ? <div className="paper-history">{state.papers.slice(0, 5).map((paper) => <div key={paper.id}><span className="paper-icon"><FileImage size={19} /></span><div><strong>{paper.title}</strong><span>{paper.subject} · {paper.date}</span></div><Badge tone={paper.summary.scoreRate >= 80 ? 'success' : paper.summary.scoreRate >= 60 ? 'warning' : 'danger'}>{paper.score}/{paper.fullScore}</Badge></div>)}</div> : <EmptyState title="还没有试卷记录" description="完成首次试卷分析后，趋势和薄弱章节会出现在这里。" />}
-          <Callout title="当前阶段如何体验">上传任意清晰图片后，系统使用模拟 OCR 拆出示例题目。你可以修改所有识别字段，验证完整业务流程。</Callout>
+          <Callout title="当前阶段如何体验">上传清晰试卷图片后，系统调用 Render 后端 OCR 接口拆分题目；未配置视觉模型时会返回可编辑的结构化兜底结果，保证流程不中断。所有识别字段都需要学生核对。</Callout>
         </Card>
       </div>
 

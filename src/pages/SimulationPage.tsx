@@ -26,7 +26,9 @@ export function SimulationPage() {
       const points = (mode === 'weak' ? weakPoints.slice(0, 3) : weakPoints).map((point) => ({ id: point.id, name: point.name }))
       const result = await learningApi.ai.generateSimulation({ subject, points, count })
       setQuestions(result)
-      notify('success', '模拟训练已生成', `共 ${count} 道题，重点覆盖 ${points.map((item) => item.name).join('、') || `${subject}基础知识`}。`)
+      notify('success', '模拟训练已生成', `共 ${result.length} 道题，重点覆盖 ${points.map((item) => item.name).join('、') || `${subject}基础知识`}。`)
+    } catch (error) {
+      notify('error', '模拟训练生成失败', error instanceof Error ? error.message : '请稍后重试')
     } finally {
       setLoading(false)
     }
@@ -53,7 +55,7 @@ export function SimulationPage() {
         <div className="selected-points"><Settings2 size={17} /><span>本次优先知识点：</span>{weakPoints.length ? weakPoints.slice(0, 4).map((point) => <Badge key={point.id} tone={point.mastery < 45 ? 'danger' : 'warning'}>{point.name} {point.mastery}%</Badge>) : <Badge>{subject}基础知识</Badge>}</div>
       </Card>
 
-      {questions.length ? <QuizRunner key={questions.map((item) => item.id).join('-')} questions={questions} title={`${subject} · ${mode === 'weak' ? '薄弱点专项' : '综合训练'}`} onSubmit={submit} submitLabel="提交并更新画像" /> : <Card><EmptyState title="尚未生成训练题" description="选择训练设置后点击“生成模拟训练”。当前使用模拟 AI 服务，后续可无缝替换正式接口。" /></Card>}
+      {questions.length ? <QuizRunner key={questions.map((item) => item.id).join('-')} questions={questions} title={`${subject} · ${mode === 'weak' ? '薄弱点专项' : '综合训练'}`} onSubmit={submit} submitLabel="提交并更新画像" /> : <Card><EmptyState title="尚未生成训练题" description="选择训练设置后点击“生成模拟训练”。系统通过 Render 后端生成训练题；未配置模型密钥时使用结构化兜底题目，页面仍可完整体验。" /></Card>}
 
       {lastResult && <Card className="simulation-result-summary"><div><strong>{lastResult.rate}%</strong><span>本次正确率</span></div><div><strong>{lastResult.correct}/{lastResult.total}</strong><span>答对题数</span></div><div><strong>{lastResult.total - lastResult.correct}</strong><span>已加入错题本</span></div><p>本次结果已同步到知识点掌握度、遗忘风险和复习任务。</p></Card>}
     </div>

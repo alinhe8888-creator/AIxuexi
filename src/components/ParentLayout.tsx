@@ -6,11 +6,11 @@ import { useParentData } from '../parent/useParentData'
 import { Button } from './ui'
 
 const items = [
-  { to: '/parent', label: '家长首页', icon: Home, end: true },
-  { to: '/parent/progress', label: '学习进度', icon: TrendingUp },
-  { to: '/parent/mistakes', label: '错题与错因', icon: BookX },
-  { to: '/parent/reports', label: '学习报告', icon: BarChart3 },
-  { to: '/parent/settings', label: '绑定与设置', icon: Link2 },
+  { to: '/', label: '家长首页', icon: Home, end: true },
+  { to: '/progress', label: '学习进度', icon: TrendingUp },
+  { to: '/mistakes', label: '错题与错因', icon: BookX },
+  { to: '/reports', label: '学习报告', icon: BarChart3 },
+  { to: '/settings', label: '绑定与设置', icon: Link2 },
 ]
 
 export function ParentLayout({ children }: { children: ReactNode }) {
@@ -21,7 +21,7 @@ export function ParentLayout({ children }: { children: ReactNode }) {
   return (
     <div className="parent-shell">
       <aside className="parent-sidebar">
-        <NavLink to="/parent" className="brand"><span className="brand-mark"><Sparkles size={20} /></span><span><strong>知航 AI</strong><small>家长端</small></span></NavLink>
+        <NavLink to="/" className="brand"><span className="brand-mark"><Sparkles size={20} /></span><span><strong>知航 AI</strong><small>家长端</small></span></NavLink>
         <div className="parent-private-badge"><ShieldCheck size={16} /><span>仅家长账号可见</span></div>
         <nav className="side-nav">
           {items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive ? 'active' : ''}><Icon size={19} /><span>{label}</span><ChevronRight className="nav-arrow" size={15} /></NavLink>)}
@@ -38,7 +38,7 @@ export function ParentLayout({ children }: { children: ReactNode }) {
             <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} />刷新</Button>
           </div>
         </header>
-        <div className="parent-page-container" key={location.pathname}>{children}</div>
+        <div className="parent-page-container">{children}</div>
       </main>
       <nav className="parent-mobile-nav" aria-label="家长端手机导航">
         {items.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive ? 'active' : ''}><Icon size={20} /><span>{label.replace('家长','')}</span></NavLink>)}
