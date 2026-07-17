@@ -10,6 +10,7 @@ import {
   FileSearch,
   GraduationCap,
   Home,
+  LogOut,
   Menu,
   MoreHorizontal,
   Settings,
@@ -20,6 +21,7 @@ import {
 import { useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
+import { useAuth } from '../auth/useAuth'
 import { ToastViewport } from './ToastViewport'
 
 const navItems = [
@@ -49,6 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const location = useLocation()
   const { state } = useAppStore()
+  const { user, logout } = useAuth()
   const current = navItems.find((item) => item.to === location.pathname)
   const primaryMobile = navItems.filter((item) => item.mobile).slice(0, 5)
   const otherItems = navItems.filter((item) => !primaryMobile.includes(item))
@@ -66,8 +69,9 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-card">
           <div className="mini-avatar">{state.profile.name.slice(0, 1)}</div>
-          <div><strong>{state.profile.name}</strong><small>{state.profile.grade} · 每日 {state.profile.dailyMinutes} 分钟</small></div>
+          <div><strong>{state.profile.name}</strong><small>{state.profile.grade} · {user?.email}</small></div>
         </div>
+        <button className="student-logout" onClick={logout}><LogOut size={16} />退出登录</button>
       </aside>
 
       <main className="main-area">
