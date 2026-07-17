@@ -1,0 +1,37 @@
+AIxuexi v1.2.0 验收报告
+========================
+
+前端：
+- npm run lint：0 warnings / 0 errors
+- npm run typecheck：通过
+- npm run build：通过
+- dist/index.html：存在
+- dist/_redirects：存在，内容为 /* /index.html 200
+- dist/_headers：存在
+- BrowserRouter：已启用
+- 旧 GitHub Pages workflow：已从修复包移除
+
+家长端：
+- 独立登录角色：student / parent
+- 学生导航：无家长端入口
+- 学生访问 /parent：前端角色守卫跳转
+- 家长页面：首页、学习进度、错题错因、学习报告、绑定设置
+- 家长绑定：学生生成 6 位临时码，15 分钟有效
+- 家长数据：由学生学习快照生成汇总
+
+后端：
+- npm run typecheck：通过
+- npm run build：通过
+- JWT 登录与角色校验：已实现
+- /api/parent/*：parent 角色限制
+- 家长—学生绑定关系校验：已实现
+- PostgreSQL 迁移脚本：已实现
+- Render health check：/api/health
+
+页面点击后需刷新问题：
+- 改为顶层 BrowserRouter
+- 路由结构按角色拆分
+- 页面视图随 pathname 立即更新
+- Cloudflare SPA 回退已配置
+- index.html 禁止缓存
+- API GET 请求包含超时和 502/503/504 自动重试

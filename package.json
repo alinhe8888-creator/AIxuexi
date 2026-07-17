@@ -1,7 +1,7 @@
 {
-  "name": "ai-high-school-assistant",
+  "name": "aixuexi-parent-portal",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,5 +25,5 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   },
-  "description": "AI 高中学习助手前端 MVP"
+  "description": "AI高中学习助手：学生端、受保护家长端、Cloudflare前端与Render后端"
 }

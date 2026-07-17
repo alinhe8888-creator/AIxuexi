@@ -1,320 +1,195 @@
-# 知航 AI · 高中学习助手
+# 知航 AI · 高中学习助手（学生端 + 独立家长端）
 
-> **当前 GitHub Pages 稳定部署版**：仓库已包含预构建的 `dist/`。GitHub Actions 不执行 `npm install`、`npm ci` 或前端构建，只校验并直接发布 `dist/`，用于规避 GitHub Runner 的 npm `Exit handler never called` 异常。
-
-
-一个可直接部署到 GitHub Pages 的完整前端项目。当前版本使用模拟 AI、模拟 OCR 和浏览器 `localStorage`，无需服务器即可体验完整学习闭环；后续可在同一仓库中接入 Cloudflare Workers、D1、R2、正式 AI/OCR 和知识库。
-
-## 1. 当前成品包含什么
-
-### 页面目录
-
-- 首页：今日学习安排、复习安排、每日小测、学习进度、薄弱知识点、常用入口
-- 拍题讲解：图片上传、压缩预览、模拟 OCR、人工修改、分步提示、完整答案、错因分析、即时检测、保存闭环
-- 试卷分析：多图上传、模拟拆题、逐题得分确认、失分知识点、主要错因、学习建议、错题自动入库
-- 错题本：科目/错因筛选、掌握度、错误次数、复习到期、错题详情、四档复习反馈、归档和删除
-- 闯关学习：单词、短语、语法、古诗词、文言文、公式、物理规律、化学方程式、生物概念
-- 模拟训练：按薄弱点动态组卷，提交后同步错题本、画像和复习计划
-- 每日计划：任务完成、预计时间、手动添加、近期计划、任务生成依据
-- 每日小测：错题与薄弱点混合出题，提交后生成第二天加强任务
-- 学习画像：科目/章节/知识点掌握度、正确率、错误次数、主要错因、遗忘风险、趋势和下一步建议
-- 知识库：科目、年级、章节、知识点、年份、地区、题型和来源分类
-- 学习报告：掌握趋势、计划完成、薄弱排行、错因分布、下周行动清单和文本导出
-- 个人设置：学生档案、选科、各科教材版本、当前章节、学习强度、AI 偏好、主题、数据导入导出和重置
-
-### 已完成的数据联动
+## 系统结构
 
 ```text
-上传错题 / 试卷
-        ↓
-确认识别结果
-        ↓
-AI 分步骤讲解
-        ↓
-确认错误原因
-        ↓
-保存错题记录
-        ↓
-更新知识点掌握度与错误次数
-        ↓
-计算遗忘风险和下次复习日期
-        ↓
-生成每日复习任务
-        ↓
-完成同类题 / 模拟训练 / 每日小测
-        ↓
-再次更新错题本、学习画像和次日计划
+Cloudflare Pages 前端
+├─ 学生登录与学生端
+├─ 家长登录与独立家长端
+├─ BrowserRouter
+├─ SPA 路由回退
+└─ 禁止缓存旧 index.html
+        │
+        ▼
+Render API 后端
+├─ 注册与登录
+├─ JWT 角色校验
+├─ 学生学习快照同步
+├─ 学生生成临时绑定码
+├─ 家长绑定学生
+├─ 家长汇总数据接口
+└─ PostgreSQL 数据库
 ```
 
-所有核心页面读取同一份 `AppState`，不存在每个页面各自维护互不关联的演示数据。
+## 本版主要更新
 
-## 2. 技术方案
+### 1. 独立家长端
 
-- React 19
-- Vite 8
-- TypeScript 6
-- React Router `HashRouter`
-- Lucide React 图标
-- 原生 CSS 设计系统与响应式布局
-- localStorage 版本化数据存储
-- GitHub Actions 自动部署 GitHub Pages
+家长端包含：
 
-电脑端使用左侧目录；手机端使用 5 个核心底部入口和“更多”功能抽屉。
+- 家长首页
+- 今日学习完成情况
+- 综合掌握度
+- 薄弱知识点
+- 高遗忘风险提醒
+- 各科学习进度
+- 错题和主要错因
+- 小测趋势
+- 阶段学习报告
+- 家长行动建议
+- 多个学生绑定与切换
 
-## 3. 立即运行
+### 2. 学生不能看到家长端
 
-要求：Node.js 22 或兼容版本。
-
-```bash
-npm install
-npm run dev
-```
-
-浏览器打开终端显示的本地地址。
-
-交付前检查：
-
-```bash
-npm run lint
-npm run typecheck
-npm run build
-npm run preview
-```
-
-## 4. 上传 GitHub 并部署 Pages
-
-### 第一步：创建仓库
-
-在 GitHub 新建一个仓库，例如：
+权限采用两层控制：
 
 ```text
-ai-high-school-assistant
+前端
+├─ 学生导航没有家长入口
+├─ 学生访问 /parent 自动跳回学生端
+└─ 家长和学生使用不同页面结构
+
+后端
+├─ /api/parent/* 必须登录
+├─ 必须是 parent 角色
+├─ 必须已经绑定目标学生
+└─ 学生 token 请求家长接口返回 403
 ```
 
-不要选择自动生成 README、`.gitignore` 或 License，避免与本项目文件冲突。
-
-### 第二步：上传项目
-
-解压 ZIP，把项目根目录中的全部文件上传到仓库根目录。必须包括隐藏目录：
+### 3. 学生与家长绑定
 
 ```text
-.github/workflows/deploy-pages.yml
+学生个人设置
+→ 生成 6 位临时绑定码
+→ 15 分钟有效
+→ 家长端输入绑定码
+→ 建立家长—学生关联
+→ 绑定码立即失效
 ```
 
-确认默认分支名称为 `main`。
+### 4. 修复“点击功能后必须刷新才显示”
 
-### 第三步：启用 GitHub Pages
+本版采用：
 
-进入仓库：
+- 顶层 `BrowserRouter`
+- 单一角色路由结构
+- 页面路由切换强制建立新视图容器
+- `public/_redirects` 提供 Cloudflare SPA 回退
+- `public/_headers` 禁止缓存旧 `index.html`
+- API 请求超时、重试和错误状态
+- Render 冷启动时 GET 请求自动重试
+- 学习数据本地保存并异步同步，不阻塞页面渲染
 
-```text
-Settings → Pages → Build and deployment → Source → GitHub Actions
-```
-
-推送到 `main` 后，工作流将自动执行：
-
-```text
-npm ci
-→ npm run lint
-→ npm run typecheck
-→ npm run build
-→ 上传 dist
-→ 部署 GitHub Pages
-```
-
-### 第四步：查看部署地址
-
-进入：
-
-```text
-Actions → Deploy AI Learning Assistant to GitHub Pages
-```
-
-部署成功后，访问地址通常为：
-
-```text
-https://你的用户名.github.io/仓库名/
-```
-
-如果仓库名称本身是 `你的用户名.github.io`，地址为：
-
-```text
-https://你的用户名.github.io/
-```
-
-### 为什么不需要手动修改 Vite base
-
-`vite.config.ts` 会在 GitHub Actions 中读取：
-
-```text
-GITHUB_REPOSITORY=用户名/仓库名
-```
-
-并自动生成：
-
-```text
-/仓库名/
-```
-
-本地开发仍使用 `/`。因此更换仓库名称后也不需要手动修改配置。
-
-### 为什么刷新子页面不会 404
-
-项目固定使用 `HashRouter`，页面地址类似：
-
-```text
-https://用户名.github.io/仓库名/#/mistakes
-```
-
-`#` 后面的路由由浏览器前端处理，不需要 GitHub Pages 返回真实子目录，因此刷新不会出现子页面 404。
-
-## 5. 项目目录
+## 项目目录
 
 ```text
 .
-├── .github/workflows/
-│   └── deploy-pages.yml       # GitHub Pages 自动部署
-├── public/
-│   └── .nojekyll              # 禁用 Jekyll 处理
-├── src/
-│   ├── components/            # 布局、通用 UI、图表、答题器
-│   ├── data/seed.ts           # 完整演示数据
-│   ├── pages/                 # 独立功能页面
-│   ├── services/
-│   │   ├── apiClient.ts       # 统一请求、后端地址和错误处理
-│   │   ├── learningApi.ts     # AI/OCR/知识库/同步接口总入口
-│   │   └── mockApi.ts         # 当前模拟服务
-│   ├── store/                 # localStorage 和跨页面业务联动
-│   ├── utils/                 # 日期、图片压缩、学习调度规则
-│   ├── types.ts               # 统一数据模型
-│   ├── App.tsx                # 路由
-│   └── main.tsx               # HashRouter 和 Store 入口
-├── .env.example
-├── vite.config.ts
-└── README.md
+├─ src/                         前端源码
+│  ├─ auth/                     登录状态和角色路由守卫
+│  ├─ parent/                   家长数据上下文
+│  ├─ pages/parent/             家长端页面
+│  ├─ services/                 API、登录、同步、家长接口
+│  ├─ store/                    学生学习状态与云端同步
+│  └─ components/               学生与家长布局
+├─ public/
+│  ├─ _redirects                Cloudflare SPA 回退
+│  └─ _headers                  缓存与安全响应头
+├─ backend/
+│  ├─ src/server.ts             Render API
+│  ├─ src/migrate.ts            PostgreSQL 数据表迁移
+│  ├─ src/summary.ts            家长汇总数据计算
+│  └─ package.json
+├─ render.yaml                  Render 服务配置参考
+├─ AGENTS.md                    Codex 执行规则
+└─ CODEX_DEPLOY_PROMPT.md       浏览器部署提示词
 ```
 
-## 6. 数据结构
+## 本地运行
 
-核心实体包括：
-
-- `StudentProfile`
-- `QuestionRecord`
-- `MistakeRecord`
-- `PaperRecord`
-- `KnowledgePoint`
-- `ReviewTask`
-- `DailyPlan`
-- `QuizRecord`
-- `StudyCard`
-- `KnowledgeItem`
-- `ActivityLog`
-
-题目来源强制使用：
-
-- `user_upload`：用户上传
-- `real_exam`：合法公开真题
-- `ai_generated`：AI 生成
-- `demo`：系统演示
-
-页面中会使用明显标签区分来源。
-
-## 7. 当前复习调度规则
-
-当前前端使用可解释的轻量间隔复习规则：
-
-| 学习反馈 | 掌握度变化 | 基础复习间隔 |
-|---|---:|---:|
-| 没掌握 | -15 | 1 天 |
-| 有点模糊 | -5 | 2 天 |
-| 掌握了 | +8 | 3–7 天 |
-| 很熟练 | +14 | 7–14 天 |
-
-遗忘风险综合考虑：
-
-```text
-当前掌握度 + 距上次复习时间 + 历史错误次数
-```
-
-正式版可替换为 FSRS，但应由后端统一保存复习记录和算法参数。
-
-## 8. 接入 Cloudflare 和正式后端
-
-复制环境变量文件：
+### 前端
 
 ```bash
+npm ci
 cp .env.example .env.local
+npm run dev
 ```
 
-正式接口配置示例：
+本地演示可以设置：
+
+```env
+VITE_USE_MOCK_API=true
+VITE_API_BASE_URL=
+```
+
+### 后端
+
+```bash
+cd backend
+npm ci
+cp .env.example .env
+npm run build
+npm run migrate
+npm start
+```
+
+## Cloudflare Pages 配置
+
+```text
+Framework preset：Vite
+Root directory：/
+Build command：npm ci && npm run build
+Build output directory：dist
+```
+
+环境变量：
 
 ```env
 VITE_USE_MOCK_API=false
-VITE_API_BASE_URL=https://your-api.workers.dev
+VITE_API_BASE_URL=https://你的Render服务.onrender.com
 ```
 
-页面只调用 `src/services/learningApi.ts`，不直接写接口地址和密钥。
-
-### 已预留的接口
+## Render 配置
 
 ```text
-POST /api/ocr/question
-POST /api/ocr/paper
-POST /api/ai/explain
-POST /api/ai/simulation
-GET  /api/knowledge
-POST /api/sync/snapshot
+Root directory：backend
+Build command：npm ci && npm run build
+Pre-deploy command：npm run migrate
+Start command：npm start
+Health check：/api/health
 ```
 
-### 推荐 Cloudflare 结构
+环境变量：
+
+```env
+NODE_ENV=production
+DATABASE_URL=Render PostgreSQL连接地址
+JWT_SECRET=至少32位随机字符串
+CORS_ORIGIN=https://你的Cloudflare域名.pages.dev,https://你的正式域名
+```
+
+## API
 
 ```text
-GitHub Pages
-   │
-   └── HTTPS
-        ↓
-Cloudflare Workers API
-   ├── AI Gateway / 模型服务
-   ├── OCR 服务
-   ├── D1：学生、错题、画像、计划、复习记录
-   ├── R2：题目图片、试卷图片和资料文件
-   ├── Vectorize：知识库向量检索
-   └── KV：短期缓存和配置
+GET    /api/health
+POST   /api/auth/register
+POST   /api/auth/login
+GET    /api/auth/me
+GET    /api/student/snapshot
+PUT    /api/student/snapshot
+POST   /api/student/pair-code
+POST   /api/parent/link
+GET    /api/parent/children
+GET    /api/parent/children/:studentId/dashboard
+DELETE /api/parent/children/:studentId
 ```
 
-密钥必须保存在 Cloudflare Worker 的 Secrets 中，不能放入前端环境变量。所有写入接口需要增加用户身份认证、权限校验、限流、日志和内容安全检查。
-
-## 9. localStorage 限制
-
-当前版本适合前端体验和产品验证，但不适合长期保存大量试卷图片：
-
-- 浏览器本地容量有限
-- 换浏览器或清理网站数据会丢失
-- 无法自动跨设备同步
-- GitHub Pages 是静态托管，不能安全保存密钥
-
-设置页面提供 JSON 导出和导入，正式版应迁移至云端数据库和对象存储。
-
-## 10. 开源项目与设计参考
-
-本项目代码为独立实现，没有直接复制第三方项目源代码。主要参考：
-
-- Vite 官方 GitHub Pages 静态部署方式
-- React Router `HashRouter` 的静态站点路由思路
-- `shadcn-ui/ui` 的开放式组件、可访问性和视觉层级理念
-- `open-spaced-repetition/ts-fsrs` 的间隔复习工程化思路
-- `PapillonApp/Papillon` 的学生端信息架构和移动导航思路
-
-注意：Papillon 使用 GPL 许可证，本项目只研究其产品与导航思路，没有复制其代码。
-
-## 11. 当前验收状态
-
-项目打包前已经执行：
+## 已完成检查
 
 ```text
-npm run lint      → 0 warnings / 0 errors
-npm run typecheck → 通过
-npm run build     → 通过
+前端 npm run typecheck  通过
+前端 npm run build      通过
+后端 npm run typecheck  通过
+后端 npm run build      通过
+Cloudflare _redirects   已进入 dist
+Cloudflare _headers     已进入 dist
 ```
-
-GitHub Pages 构建时会再次执行上述检查，任何一步失败都不会发布错误版本。
