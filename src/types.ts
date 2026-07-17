@@ -283,3 +283,53 @@ export interface SimulationResultItem {
   userAnswer: string
   cause?: ErrorCause
 }
+
+export type UserRole = 'student' | 'parent'
+
+export interface AuthUser {
+  id: string
+  email: string
+  displayName: string
+  role: UserRole
+}
+
+export interface ParentChildSummary {
+  id: string
+  email: string
+  displayName: string
+  linkedAt: string
+  lastSyncedAt: string | null
+}
+
+export interface ParentDashboard {
+  student: {
+    userId: string
+    displayName: string
+    email: string
+    grade: string
+    lastSyncedAt: string
+  }
+  today: {
+    completed: number
+    total: number
+    completionRate: number
+    plannedMinutes: number
+    completedMinutes: number
+  }
+  overview: {
+    mastery: number
+    weakPointCount: number
+    highRiskCount: number
+    activeMistakeCount: number
+    latestQuizRate: number
+  }
+  subjects: Array<{ subject: string; mastery: number; accuracy: number; weakCount: number; riskCount: number }>
+  weakPoints: Array<{ id: string; subject: string; chapter: string; name: string; mastery: number; accuracy: number; errorCount: number; mainCause?: string; forgettingRisk?: string; trend?: number[] }>
+  causes: Array<{ label: string; value: number }>
+  recentMistakes: Array<{ id: string; subject: string; chapter: string; knowledgePointName: string; primaryCause: string; wrongAt: string; wrongCount: number; mastery: number }>
+  recentQuizzes: Array<{ id: string; title: string; date: string; correctRate: number; status: string; weakPoints?: string[] }>
+  trend: number[]
+  alerts: Array<{ level: 'high' | 'medium'; title: string; description: string }>
+  activity: Array<{ id: string; type: string; title: string; description: string; createdAt: string }>
+  recommendations: Array<{ priority: number; title: string; description: string }>
+}
