@@ -5,16 +5,23 @@ const required = (name: string, fallback?: string) => {
   return value
 }
 
+const configuredCorsOrigins = optional('CORS_ORIGIN', 'http://localhost:5173,http://localhost:4173')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean)
+
+const officialPagesOrigins = [
+  'https://aixuexi-29x.pages.dev',
+  'https://aixuexi-parent.pages.dev',
+]
+
 export const config = {
   port: Number(process.env.PORT || 10000),
   databaseUrl: optional('DATABASE_URL'),
   useMemoryDb: optional('DB_MODE').toLowerCase() === 'memory' || !optional('DATABASE_URL'),
   jwtSecret: required('JWT_SECRET', 'local-development-only-change-me'),
   nodeEnv: optional('NODE_ENV', 'development'),
-  corsOrigins: optional('CORS_ORIGIN', 'http://localhost:5173,http://localhost:4173')
-    .split(',')
-    .map((origin) => origin.trim().replace(/\/$/, ''))
-    .filter(Boolean),
+  corsOrigins: [...new Set([...configuredCorsOrigins, ...officialPagesOrigins])],
   aiApiBaseUrl: optional('AI_API_BASE_URL').replace(/\/$/, ''),
   aiApiKey: optional('AI_API_KEY'),
   aiModel: optional('AI_MODEL', 'gpt-4.1-mini'),
