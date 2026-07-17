@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createSeedState } from '../data/seed'
 import { AppStoreContext, type AppStoreValue, type ToastMessage } from './AppStoreContext'
 import type {
@@ -9,6 +9,8 @@ import type {
   StudentProfile,
 } from '../types'
 import { addDays, toDateKey } from '../utils/date'
+import { useAuth } from '../auth/useAuth'
+import { studentApi } from '../services/studentApi'
 import { clamp, getMasteryLevel, getRiskLevel, ratingMasteryDelta, reviewIntervalDays } from '../utils/learning'
 
 const STORAGE_KEY = 'ai-high-school-assistant:v1'
@@ -76,13 +78,54 @@ const updateKnowledge = (
 }
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const userId = user?.id
+  const userRole = user?.role
   const [state, setState] = useState<AppState>(loadState)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  const [cloudReady, setCloudReady] = useState(false)
+  const skipNextCloudPush = useRef(true)
+  const stateRef = useRef(state)
 
   useEffect(() => {
+    stateRef.current = state
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
     document.documentElement.dataset.theme = state.settings.theme
   }, [state])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!userId || userRole !== 'student') {
+      setCloudReady(false)
+      return () => { cancelled = true }
+    }
+    setCloudReady(false)
+    skipNextCloudPush.current = true
+    studentApi.getSnapshot()
+      .then(({ snapshot }) => {
+        if (cancelled) return
+        if (snapshot?.profile && Array.isArray(snapshot.mistakes)) setState(snapshot)
+        else void studentApi.pushSnapshot(stateRef.current)
+        setCloudReady(true)
+      })
+      .catch((error) => {
+        console.warn('Cloud snapshot load failed; keeping local data.', error)
+        if (!cancelled) setCloudReady(true)
+      })
+    return () => { cancelled = true }
+  }, [userId, userRole])
+
+  useEffect(() => {
+    if (!cloudReady || !userId || userRole !== 'student') return
+    if (skipNextCloudPush.current) {
+      skipNextCloudPush.current = false
+      return
+    }
+    const timer = window.setTimeout(() => {
+      studentApi.pushSnapshot(state).catch((error) => console.warn('Cloud snapshot sync failed.', error))
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [state, cloudReady, userId, userRole])
 
   const notify: AppStoreValue['notify'] = (type, title, message) => {
     const id = crypto.randomUUID()
