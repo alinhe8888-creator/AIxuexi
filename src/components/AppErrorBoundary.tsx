@@ -1,35 +1,55 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { AlertTriangle, Home, RefreshCw } from 'lucide-react'
 
-interface Props { children: ReactNode }
-interface State { error: Error | null; eventId: string | null }
+type AppErrorBoundaryProps = {
+  children: ReactNode
+  resetKey?: string
+}
 
-export class AppErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, eventId: null }
+type AppErrorBoundaryState = {
+  error: Error | null
+}
 
-  static getDerivedStateFromError(error: Error): State {
-    return { error, eventId: crypto.randomUUID() }
+export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = { error: null }
+
+  static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
+    return { error }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[AIxuexi page error]', { error, componentStack: info.componentStack, eventId: this.state.eventId })
+    console.error('[AIxuexi] 页面渲染失败', error, info)
   }
 
-  private retry = () => this.setState({ error: null, eventId: null })
+  componentDidUpdate(previousProps: AppErrorBoundaryProps) {
+    if (this.state.error && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null })
+    }
+  }
+
+  private retryCurrentPage = () => {
+    this.setState({ error: null })
+  }
+
+  private returnHome = () => {
+    window.location.assign('/')
+  }
 
   render() {
     if (!this.state.error) return this.props.children
+
     return (
-      <section className="route-error" role="alert">
-        <span className="route-error-icon"><AlertTriangle size={26} /></span>
-        <div>
-          <h2>这个页面暂时没有正常显示</h2>
-          <p>系统已经阻止异常影响其他功能。请先重试；如果仍然失败，可返回首页继续使用。</p>
-          <small>错误编号：{this.state.eventId}</small>
-          <div className="route-error-actions">
-            <button className="btn btn-primary" onClick={this.retry}><RefreshCw size={16} />重新加载本页面</button>
-            <a className="btn btn-secondary" href="/"><Home size={16} />返回首页</a>
-          </div>
+      <section className="route-error-card" role="alert" aria-live="assertive">
+        <div className="route-error-card__icon" aria-hidden="true">🧩</div>
+        <p className="route-error-card__eyebrow">页面没有丢失</p>
+        <h1>刚才这个功能没有正常打开</h1>
+        <p>系统已经拦住了异常，不需要反复刷新。先重试当前页面，仍有问题时返回首页重新进入。</p>
+        <div className="route-error-card__actions">
+          <button type="button" className="route-error-card__primary" onClick={this.retryCurrentPage}>
+            重试当前页面
+          </button>
+          <button type="button" className="route-error-card__secondary" onClick={this.returnHome}>
+            返回首页
+          </button>
         </div>
       </section>
     )
