@@ -60,9 +60,9 @@ jobs:
       - name: Build parent portal
         run: pnpm run build:parent
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: "https://aixuexi-api.onrender.com"
           VITE_USE_MOCK_API: "false"
-          VITE_ALLOW_API_FALLBACK: "true"
+          VITE_ALLOW_API_FALLBACK: "false"
 
       - name: Verify fixed build
         shell: bash
@@ -72,17 +72,13 @@ jobs:
           test -f dist-parent/_headers
           test -f dist-parent/_redirects
           test -d dist-parent/assets
+
+          grep -R -q "https://aixuexi-api.onrender.com" dist-parent/assets || {
+            echo "ERROR: API 地址没有写入构建文件"
+            exit 1
+          }
+
           grep -q '正在打开知航家长端' dist-parent/index.html
           grep -q 'aixuexi:asset-recovery-at' dist-parent/index.html
-          echo "Fixed parent build verified."
+          echo "Fixed parent build and API URL verified."
           find dist-parent -maxdepth 2 -type f | sort | head -40
-
-      - name: Deploy fixed parent portal
-        run: >
-          pnpm dlx wrangler@latest pages deploy dist-parent
-          --project-name=aixuexi-parent
-          --branch=main
-          --commit-dirty=true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
