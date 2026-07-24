@@ -82,3 +82,12 @@ jobs:
           grep -q 'aixuexi:asset-recovery-at' dist-parent/index.html
           echo "Fixed parent build and API URL verified."
           find dist-parent -maxdepth 2 -type f | sort | head -40
+      - name: Deploy fixed parent portal
+        run: >
+          pnpm dlx wrangler@latest pages deploy dist-parent
+          --project-name=aixuexi-parent
+          --branch=main
+          --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
