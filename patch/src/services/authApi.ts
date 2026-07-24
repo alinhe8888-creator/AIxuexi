@@ -32,6 +32,7 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
       retry: 0,
+      timeoutMs: 20_000,
     })
   },
 
@@ -41,7 +42,8 @@ export const authApi = {
 
   async me() {
     if (USE_MOCK_API) return { user: readCachedUser() }
-    return apiRequest<{ user: AuthUser }>('/api/auth/me')
+    // 登录恢复不能沿用通用 GET 的 60 秒 × 3 次重试，否则 Render 冷启动时会长时间白屏。
+    return apiRequest<{ user: AuthUser }>('/api/auth/me', { timeoutMs: 8_000, retry: 0 })
   },
 
   saveSession(response: AuthResponse) {

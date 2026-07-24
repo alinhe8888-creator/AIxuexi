@@ -44,12 +44,14 @@ export function AuthProvider({ children, expectedRole }: { children: ReactNode; 
         logout()
         return
       }
-      // Render 冷启动或短暂断网时保留本地已验证身份，避免家长端首次进入出现空白。
+
+      // Render 冷启动或短暂断网：已有缓存身份就继续显示页面；没有缓存则直接显示登录页。
       const cached = authApi.getCachedUser()
       if (cached?.role === expectedRole) {
         setUser(cached)
         setStatus('authenticated')
       } else {
+        setUser(null)
         setStatus('anonymous')
       }
     } finally {

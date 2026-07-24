@@ -1,28 +1,6 @@
-AIxuexi v1.5 增量补丁文件清单
-
-新增后端：
-- backend/src/r2Routes.ts
-- backend/src/aiGateway.ts
-
-新增前端：
-- src/services/storageApi.ts
-
-覆盖前端：
-- src/services/learningApi.ts
-- src/services/authApi.ts
-- src/auth/AuthContext.tsx
-- src/parent/ParentDataContext.tsx
-- src/pages/StudentAuthPage.tsx
-- src/pages/ParentAuthPage.tsx
-
-自动修改：
-- backend/src/server.ts
-- backend/src/learning.ts
-- backend/package.json
-
-配置与说明：
-- R2_CORS.json
-- backend-env.example
-- README_安装部署.md
-- 执行命令.txt
-- apply-patch.mjs
+apply-fix.mjs
+使用说明.txt
+patch/src/auth/AuthContext.tsx
+patch/src/services/authApi.ts
+patch/src/pages/ParentAuthPage.tsx
+patch/src/pages/StudentAuthPage.tsx
