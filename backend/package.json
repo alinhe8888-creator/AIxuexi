@@ -3,11 +3,10 @@
   "version": "1.4.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22.0.0"
-  },
+  "engines": { "node": ">=22.0.0" },
   "scripts": {
-    "dev": "node --watch --experimental-strip-types src/server.ts",
+    "dev": "node scripts/apply-family-routes.mjs && node --watch --experimental-strip-types src/server.ts",
+    "prebuild": "node scripts/apply-family-routes.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "migrate": "node dist/migrate.js",
