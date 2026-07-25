@@ -1,6 +1,5 @@
 import { createSeedState } from '../data/seed'
 import type { AppState, ParentChildSummary, ParentDashboard } from '../types'
-import type { StudentAnalytics } from './analyticsApi'
 import { apiRequest, USE_MOCK_API } from './apiClient'
 
 function mockDashboard(state: AppState): ParentDashboard {
@@ -23,9 +22,9 @@ function mockDashboard(state: AppState): ParentDashboard {
     recentMistakes: state.mistakes.filter((item) => !item.archived).slice(0, 12).map((item) => ({ id: item.id, subject: item.subject, chapter: item.chapter, knowledgePointName: item.knowledgePointName, primaryCause: item.primaryCause, wrongAt: item.wrongAt, wrongCount: item.wrongCount, mastery: item.mastery })),
     recentQuizzes: quizzes,
     trend: [52, 60, 66, 72, 78],
-    alerts: weakPoints.slice(0, 3).map((item) => ({ level: item.mastery < 45 ? 'high' as const : 'medium' as const, title: `${item.subject} · ${item.name}`, description: `掌握度 ${item.mastery}%` })),
+    alerts: weakPoints.slice(0, 3).map((item) => ({ level: item.mastery < 45 ? 'high' as const : 'medium' as const, title: `${item.subject} · ${item.name}`, description: `掌握度 ${item.mastery}%｜主要错因：${item.mainCause ?? '待确认'}` })),
     activity: state.activityLogs.slice(0, 12),
-    recommendations: weakPoints.slice(0, 3).map((item, index) => ({ priority: index + 1, title: `先补 ${item.name}`, description: `${item.subject}掌握度 ${item.mastery}%` })),
+    recommendations: weakPoints.slice(0, 3).map((item, index) => ({ priority: index + 1, title: `优先巩固 ${item.name}`, description: `${item.subject}「${item.chapter}」掌握度 ${item.mastery}%，建议安排短时复习与同类题。` })),
   }
 }
 
@@ -39,21 +38,10 @@ export const parentApi = {
     if (USE_MOCK_API) return { ok: true }
     return apiRequest<{ ok: boolean }>('/api/parent/link', { method: 'POST', body: JSON.stringify({ code }), retry: 0 })
   },
-  async linkChildByEmail(email: string) {
-    if (USE_MOCK_API) return { ok: true }
-    return apiRequest<{ ok: boolean }>('/api/parent/link-direct', { method: 'POST', body: JSON.stringify({ email }), retry: 0 })
-  },
   async getDashboard(studentId: string): Promise<ParentDashboard> {
     if (USE_MOCK_API) return mockDashboard(createSeedState())
     const result = await apiRequest<{ dashboard: ParentDashboard }>(`/api/parent/children/${studentId}/dashboard`)
     return result.dashboard
-  },
-  async getAnalytics(studentId: string): Promise<StudentAnalytics> {
-    if (USE_MOCK_API) {
-      return { generatedAt: new Date().toISOString(), overview: { activeMistakes: 0, averageMastery: 0, latestAccuracy: 0, completedTasks: 0, totalTasks: 0, materialCount: 0, studyDays: 0 }, weakSubjects: [], weakPoints: [], trend: [], recommendations: ['先完成几次学习记录。'], recentMaterials: [] }
-    }
-    const result = await apiRequest<{ analytics: StudentAnalytics }>(`/api/parent/children/${studentId}/analytics`)
-    return result.analytics
   },
   async unlinkChild(studentId: string) {
     if (USE_MOCK_API) return { ok: true }
