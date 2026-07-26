@@ -1,0 +1,42 @@
+.private-login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f7f8fc;
+}
+.private-login-card {
+  width: min(420px, 100%);
+  padding: 34px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(36, 42, 66, .10);
+}
+.private-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 34px;
+}
+.private-login-brand > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: white;
+  background: linear-gradient(135deg, var(--primary), #9d73ff);
+}
+.private-login-brand strong { font-size: 18px; }
+.private-login-title h1 { margin: 0 0 24px; font-size: 30px; letter-spacing: -.04em; }
+.private-login-card .auth-form { gap: 16px; }
+.private-login-card .btn-lg { width: 100%; margin-top: 4px; }
+.private-clean-home { min-height: calc(100vh - 70px); }
+.private-home-card { max-width: 780px; padding: 52px; }
+.private-home-card h1 { margin: 0 0 28px; font-size: clamp(32px, 5vw, 52px); }
+@media (max-width: 720px) {
+  .private-login-page { padding: 16px; }
+  .private-login-card { padding: 24px; border-radius: 18px; }
+  .private-home-card { padding: 28px 20px; }
+}
