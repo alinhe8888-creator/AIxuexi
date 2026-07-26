@@ -6,7 +6,7 @@ import { learningApi } from '../services'
 import { useAppStore } from '../store/useAppStore'
 import type { ErrorCause, QuizQuestion, Subject } from '../types'
 
-const subjects: Subject[] = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治']
+const subjects: Subject[] = ['语文', '数学', '英语', '历史', '地理', '政治']
 
 export function SimulationPage() {
   const { state, applySimulation, notify } = useAppStore()

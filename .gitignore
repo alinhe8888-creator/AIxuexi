@@ -27,3 +27,7 @@ backend/.env
 dist-student
 dist-parent
 .wrangler
+dist-student/
+dist-parent/
+backend/dist/
+.aixuexi-backups/

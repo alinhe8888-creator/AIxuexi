@@ -16,14 +16,6 @@ const statements = [
     snapshot JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
-  `CREATE TABLE IF NOT EXISTS pair_codes (
-    id UUID PRIMARY KEY,
-    student_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    code VARCHAR(8) NOT NULL UNIQUE,
-    expires_at TIMESTAMPTZ NOT NULL,
-    used_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )`,
   `CREATE TABLE IF NOT EXISTS parent_student_links (
     parent_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     student_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -40,10 +32,13 @@ const statements = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY(student_user_id,record_type,record_id)
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_pair_codes_student ON pair_codes(student_user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_parent_links_parent ON parent_student_links(parent_user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_parent_links_student ON parent_student_links(student_user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_student_records_type ON student_records(student_user_id,record_type,updated_at DESC)`,
+  `DROP TABLE IF EXISTS pair_codes`,
+  `CREATE INDEX IF NOT EXISTS idx_parent_links_parent
+   ON parent_student_links(parent_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_parent_links_student
+   ON parent_student_links(student_user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_student_records_type
+   ON student_records(student_user_id,record_type,updated_at DESC)`,
 ]
 
 if (config.useMemoryDb) {
@@ -51,7 +46,7 @@ if (config.useMemoryDb) {
 } else if (pool) {
   try {
     for (const statement of statements) await pool.query(statement)
-    console.log('Database migrations completed successfully.')
+    console.log('Private-family database migrations completed successfully.')
   } finally {
     await pool.end()
   }

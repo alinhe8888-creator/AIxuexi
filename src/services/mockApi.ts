@@ -5,11 +5,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const subjectTemplates: Record<Subject, { chapter: string; point: string; content: string; answer: string; format: QuestionFormat }> = {
   语文: { chapter: '古诗词鉴赏', point: '诗歌情感与表现手法', content: '阅读诗句，结合意象分析作者表达的思想感情。', answer: '先概括意象营造的氛围，再结合关键词说明情感。', format: '解答题' },
   数学: { chapter: '函数与导数', point: '导数的几何意义', content: '已知函数 f(x)=x²-4x+5，求曲线在 x=1 处的切线方程。', answer: 'y=-2x+4', format: '解答题' },
-  英语: { chapter: '非谓语动词', point: '分词作状语', content: '____ by the teacher, the student corrected the mistake at once. (encourage)', answer: 'Encouraged', format: '填空题' },
-  物理: { chapter: '机械能守恒', point: '机械能守恒条件', content: '小球沿光滑轨道下滑，不计空气阻力。判断机械能是否守恒并说明理由。', answer: '守恒；只有重力做功。', format: '解答题' },
-  化学: { chapter: '化学平衡', point: '平衡移动判断', content: '对于放热反应，升高温度后平衡向哪个方向移动？说明理由。', answer: '向吸热方向移动，即逆反应方向。', format: '解答题' },
-  生物: { chapter: '细胞膜', point: '物质跨膜运输', content: '比较自由扩散、协助扩散和主动运输在方向、载体和能量方面的差异。', answer: '自由扩散顺浓度、不需载体和能量；协助扩散顺浓度、需载体、不耗能；主动运输可逆浓度、需载体和能量。', format: '解答题' },
-  历史: { chapter: '中国近现代史', point: '史料实证', content: '阅读材料，概括材料反映的历史现象并分析其背景。', answer: '先从材料提取现象，再结合时代、经济、政治和社会因素分析。', format: '解答题' },
+  英语: { chapter: '非谓语动词', point: '分词作状语', content: '____ by the teacher, the student corrected the mistake at once. (encourage)', answer: 'Encouraged', format: '填空题' },历史: { chapter: '中国近现代史', point: '史料实证', content: '阅读材料，概括材料反映的历史现象并分析其背景。', answer: '先从材料提取现象，再结合时代、经济、政治和社会因素分析。', format: '解答题' },
   地理: { chapter: '自然地理', point: '气候成因分析', content: '分析某地夏季高温多雨的主要原因。', answer: '从纬度位置、海陆位置、大气环流和地形等方面分析。', format: '解答题' },
   政治: { chapter: '经济与社会', point: '材料分析题', content: '结合材料，说明企业应如何实现高质量发展。', answer: '从创新、质量、品牌、人才、绿色发展和社会责任等角度作答。', format: '解答题' },
 }
@@ -45,21 +41,7 @@ export async function mockAiExplain(subject: Subject, content: string, correctAn
       commonMistakes: ['把 f(x₀) 当成斜率', '求导后忘记代入指定点', '使用点斜式时符号出错'],
       lifeExample: '曲线像一条山路，导数表示站在某一点时脚下的即时坡度；切线就是那一小段路面的延伸。',
       instantCheck: { question: '函数 g(x)=x²+2x 在 x=0 处的切线斜率是多少？', answer: '2', explanation: "g′(x)=2x+2，因此 g′(0)=2。" },
-    },
-    物理: {
-      knowledgePoints: ['机械能守恒条件', '功能关系'],
-      thinking: '不要只看动能或势能是否变化，要先判断有哪些力做功，再判断机械能总量。',
-      steps: [
-        { title: '第一步：选研究对象', content: '明确研究对象是小球，分析运动过程中受到哪些力。' },
-        { title: '第二步：分析做功', content: '支持力与速度方向垂直，不做功；只有重力做功。' },
-        { title: '第三步：判断守恒', content: '只有重力做功时，动能与重力势能相互转化，机械能守恒。' },
-      ],
-      finalAnswer: correctAnswer || template.answer,
-      commonMistakes: ['看到势能减少就判断机械能减少', '没有区分“受力”和“做功”', '忽略摩擦或空气阻力条件'],
-      lifeExample: '过山车从高处下滑时，速度越来越快，是势能转成动能；若摩擦很小，总机械能近似不变。',
-      instantCheck: { question: '物体沿粗糙斜面下滑时，机械能是否一定守恒？', answer: '不一定守恒', explanation: '摩擦力通常做负功，使部分机械能转化为内能。' },
-    },
-    英语: {
+    },    英语: {
       knowledgePoints: ['非谓语动词', '逻辑主语与主被动关系'],
       thinking: '先找到句子逻辑主语，再判断它与动作之间是主动还是被动，最后选择现在分词或过去分词。',
       steps: [

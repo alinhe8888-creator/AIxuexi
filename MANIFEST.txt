@@ -1,6 +1,0 @@
-apply-fix.mjs
-使用说明.txt
-patch/src/auth/AuthContext.tsx
-patch/src/services/authApi.ts
-patch/src/pages/ParentAuthPage.tsx
-patch/src/pages/StudentAuthPage.tsx

@@ -1,7 +1,7 @@
 {
   "name": "aixuexi-separated-portals",
   "private": true,
-  "version": "1.4.0",
+  "version": "3.0.0-private",
   "type": "module",
   "scripts": {
     "dev": "vite --mode student",
@@ -34,5 +34,5 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   },
-  "description": "AI高中学习系统：完全隔离的学生端、家长端，以及共享Render后端数据"
+  "description": "家庭自用 AI 学习系统：R2 教材知识库、Qwen 拍题/试卷/讲解、学习分析与固定家庭关联"
 }

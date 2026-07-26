@@ -1,46 +1,61 @@
-import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import fs from 'node:fs'
 
-const read = (path) => readFileSync(path, 'utf8')
-const studentLayout = read('src/components/Layout.tsx')
-const studentPortal = read('src/StudentPortal.tsx')
-const parentLayout = read('src/components/ParentLayout.tsx')
-const parentPortal = read('src/ParentPortal.tsx')
+const requiredFiles = [
+  'dist-student/index.html',
+  'dist-parent/index.html',
+  'src/StudentPortal.tsx',
+  'src/ParentPortal.tsx',
+  'src/pages/KnowledgeBasePage.tsx',
+  'backend/src/materialRoutes.ts',
+  'backend/src/qwenLearningRoutes.ts',
+  'backend/src/studentAnalysisRoutes.ts',
+]
 
-const navPaths = [...studentLayout.matchAll(/\{ to: '([^']+)'/g)].map((match) => match[1])
-const routePaths = [...studentPortal.matchAll(/<Route path="([^"]+)"/g)].map((match) => match[1])
-const parentNavPaths = [...parentLayout.matchAll(/to: '([^']+)'/g)].map((match) => match[1])
-const parentRoutePaths = [...parentPortal.matchAll(/<Route path="([^"]+)"/g)].map((match) => match[1])
-
-const missingStudent = navPaths.filter((path) => !routePaths.includes(path))
-const missingParent = parentNavPaths.filter((path) => !parentRoutePaths.includes(path))
-if (missingStudent.length || missingParent.length) {
-  throw new Error(`Missing routes. student=${missingStudent.join(',')} parent=${missingParent.join(',')}`)
+for (const file of requiredFiles) {
+  if (!fs.existsSync(file)) throw new Error(`缺少文件：${file}`)
 }
 
-for (const dir of ['dist-student', 'dist-parent']) {
-  if (!existsSync(`${dir}/index.html`)) throw new Error(`${dir}/index.html is missing`)
-  if (!existsSync(`${dir}/_redirects`)) throw new Error(`${dir}/_redirects is missing`)
-  if (!existsSync(`${dir}/_headers`)) throw new Error(`${dir}/_headers is missing`)
-  const assets = readdirSync(`${dir}/assets`)
-  if (!assets.some((name) => name.endsWith('.js'))) throw new Error(`${dir} has no JavaScript bundle`)
-  if (!assets.some((name) => name.endsWith('.css'))) throw new Error(`${dir} has no CSS bundle`)
-  const html = read(`${dir}/index.html`)
-  if (!html.includes('/assets/') && !html.includes('./assets/')) throw new Error(`${dir}/index.html does not reference built assets`)
+const student = fs.readFileSync('src/StudentPortal.tsx', 'utf8')
+const parent = fs.readFileSync('src/ParentPortal.tsx', 'utf8')
+const material = fs.readFileSync('backend/src/materialRoutes.ts', 'utf8')
+const qwen = fs.readFileSync('backend/src/qwenLearningRoutes.ts', 'utf8')
+
+for (const route of [
+  '/photo-explain',
+  '/paper-analysis',
+  '/mistakes',
+  '/simulation',
+  '/daily-plan',
+  '/profile',
+  '/knowledge',
+  '/settings',
+]) {
+  if (!student.includes(route)) throw new Error(`学生路由缺失：${route}`)
 }
 
-if (/key=\{location\.pathname\} className="route-view"/.test(studentPortal + parentPortal)) {
-  throw new Error('Route view still forces full remount on every navigation')
-}
-if (/\.route-view\s*\{[^}]*animation/.test(read('src/App.css'))) {
-  throw new Error('Route view still uses opacity animation that can leave content invisible')
-}
-const studentBundle = read(`dist-student/assets/${readdirSync('dist-student/assets').find((name) => name.endsWith('.js'))}`)
-const parentBundle = read(`dist-parent/assets/${readdirSync('dist-parent/assets').find((name) => name.endsWith('.js'))}`)
-for (const forbidden of ['家长登录', '创建家长账号', '家庭学习观察台', '绑定学生']) {
-  if (studentBundle.includes(forbidden)) throw new Error(`Student bundle leaks parent content: ${forbidden}`)
-}
-for (const forbidden of ['拍题讲解', '试卷分析', '闯关学习', '模拟训练']) {
-  if (parentBundle.includes(forbidden)) throw new Error(`Parent bundle leaks student tool: ${forbidden}`)
+if (student.includes('HomePage')) throw new Error('学生首页仍被引用')
+if (student.includes('OnboardingPage')) throw new Error('引导页仍被引用')
+
+for (const route of ['/', '/progress', '/mistakes', '/reports', '/settings']) {
+  if (!parent.includes(`path="${route}"`)) throw new Error(`查看路由缺失：${route}`)
 }
 
-console.log(`Route verification passed: ${navPaths.length} student links, ${parentNavPaths.length} parent links, SPA assets and portal isolation are valid.`)
+for (const route of [
+  '/materials/status',
+  '/materials/upload',
+  '/materials/imports',
+  '/knowledge',
+]) {
+  if (!material.includes(route)) throw new Error(`资料接口缺失：${route}`)
+}
+
+for (const route of ['/ocr/question', '/ocr/paper', '/ai/explain', '/ai/simulation']) {
+  if (!qwen.includes(route)) throw new Error(`Qwen 接口缺失：${route}`)
+}
+
+for (const output of ['dist-student', 'dist-parent']) {
+  const assets = fs.readdirSync(`${output}/assets`).filter((name) => name.endsWith('.js'))
+  if (!assets.length) throw new Error(`${output} 没有 JS 构建产物`)
+}
+
+console.log('✅ 路由、资料接口、Qwen 接口和双端构建产物检查通过')

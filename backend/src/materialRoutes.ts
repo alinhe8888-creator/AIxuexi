@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express'
+import { Router, raw, type NextFunction, type Request, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
 import { buildKnowledgeFromText, extractRemoteDocumentText, modelStatus, type KnowledgeItemPayload } from './materialAi.js'
 import {
@@ -18,12 +18,12 @@ import {
 import { contentTypeForPath, extractLocalText, extractZipEntries, isRemoteDocument } from './zipText.js'
 import { requireAuth, requireRole, type AuthenticatedRequest } from './auth.js'
 import { store, type StoredRecord } from './store.js'
+import { fixedTextbookVersions, isSupportedSubject, subjectValues } from './curriculum.js'
 
 const router = Router()
 const auth = [requireAuth, requireRole('student')] as const
 const activeJobs = new Set<string>()
 const initializedStudents = new Set<string>()
-const subjectValues = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治'] as const
 const gradeValues = ['高一', '高二', '高三'] as const
 
 const asyncRoute = (handler: (req: AuthenticatedRequest, res: Response) => Promise<void>) => (req: Request, res: Response, next: NextFunction) => {
@@ -42,6 +42,12 @@ const importSchema = z.object({
   subject: z.enum(subjectValues).optional(),
   grade: z.enum(gradeValues).optional(),
   textbookVersion: z.string().trim().max(80).optional(),
+})
+
+const directUploadQuerySchema = z.object({
+  fileName: z.string().trim().min(1).max(180).refine((name: string) => name.toLowerCase().endsWith('.zip'), '只支持 ZIP 压缩包'),
+  subject: z.string().trim().optional(),
+  grade: z.enum(gradeValues).optional(),
 })
 
 const idSchema = z.string().uuid()
@@ -76,7 +82,7 @@ const toPayload = <T extends Record<string, unknown>>(record: StoredRecord) => (
 
 async function ensureInitialKnowledgeReset(studentId: string) {
   if (initializedStudents.has(studentId)) return
-  const flagId = 'zip-knowledge-v1-initialized'
+  const flagId = 'private-rebuild-v3-materials-initialized'
   const flag = await store.getRecord(studentId, 'system-flags', flagId)
   if (!flag) {
     const imports = await store.listRecords(studentId, 'material-imports')
@@ -198,7 +204,8 @@ async function processImport(studentId: string, importId: string) {
   }
 }
 
-router.use(...auth)
+router.use('/materials', ...auth)
+router.use('/knowledge', ...auth)
 
 router.get('/materials/status', asyncRoute(async (req, res) => {
   await ensureInitialKnowledgeReset(req.user!.id)
@@ -208,6 +215,46 @@ router.get('/materials/status', asyncRoute(async (req, res) => {
     models: modelStatus(),
     supported: ['zip', 'pdf', 'docx', 'pptx', 'xlsx', 'epub', 'txt', 'md', 'html', 'csv', 'json', 'png', 'jpg', 'webp'],
   })
+}))
+
+router.post('/materials/upload', raw({
+  type: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'],
+  limit: `${Math.round(getMaterialMaxZipBytes() / 1024 / 1024)}mb`,
+}), asyncRoute(async (req, res) => {
+  if (!isR2Ready()) { res.status(503).json({ message: 'Render 中的 R2 环境变量尚未配置完整' }); return }
+  const input = directUploadQuerySchema.parse(req.query)
+  if (!Buffer.isBuffer(req.body) || req.body.length < 4) { res.status(400).json({ message: 'ZIP 内容为空' }); return }
+  if (req.body.length > getMaterialMaxZipBytes()) { res.status(413).json({ message: `ZIP 不能超过 ${Math.round(getMaterialMaxZipBytes() / 1024 / 1024)} MB` }); return }
+  if (req.body.subarray(0, 2).toString('hex') !== '504b') { res.status(400).json({ message: '文件不是有效 ZIP' }); return }
+  const subject = input.subject && isSupportedSubject(input.subject) ? input.subject : undefined
+  if (input.subject && !subject) { res.status(400).json({ message: '只允许语文、数学、英语、历史、地理和思想政治' }); return }
+  const studentId = req.user!.id
+  const key = createMaterialZipKey(studentId, input.fileName)
+  await putObjectBuffer(key, req.body, 'application/zip')
+  const id = randomUUID()
+  const now = new Date().toISOString()
+  const job: ImportPayload = {
+    id,
+    key,
+    fileName: input.fileName,
+    subject,
+    grade: input.grade,
+    textbookVersion: subject ? fixedTextbookVersions[subject] : undefined,
+    status: 'queued',
+    stage: '等待处理',
+    progress: 0,
+    totalFiles: 0,
+    processedFiles: 0,
+    knowledgeCount: 0,
+    skippedFiles: [],
+    extractedKeys: [],
+    errors: [],
+    createdAt: now,
+    updatedAt: now,
+  }
+  await store.upsertRecord(studentId, 'material-imports', id, job)
+  void processImport(studentId, id)
+  res.status(202).json({ import: job })
 }))
 
 router.post('/materials/presign', asyncRoute(async (req, res) => {
@@ -221,6 +268,7 @@ router.post('/materials/presign', asyncRoute(async (req, res) => {
 
 router.post('/materials/imports', asyncRoute(async (req, res) => {
   const input = importSchema.parse(req.body)
+  if (input.subject) input.textbookVersion = fixedTextbookVersions[input.subject]
   const studentId = req.user!.id
   assertOwnedMaterialKey(studentId, input.key)
   const head = await headObject(input.key)
@@ -254,7 +302,13 @@ router.post('/materials/imports', asyncRoute(async (req, res) => {
 router.get('/materials/imports', asyncRoute(async (req, res) => {
   await ensureInitialKnowledgeReset(req.user!.id)
   const records = await store.listRecords(req.user!.id, 'material-imports')
-  res.json({ imports: records.map((record) => toPayload<ImportPayload>(record)) })
+  const imports = records.map((record) => toPayload<ImportPayload>(record))
+  for (const job of imports) {
+    if (job.status === 'queued' || job.status === 'extracting' || job.status === 'analyzing') {
+      void processImport(req.user!.id, job.id)
+    }
+  }
+  res.json({ imports })
 }))
 
 router.get('/materials/imports/:id', asyncRoute(async (req, res) => {

@@ -1,4 +1,4 @@
-export type Subject = '语文' | '数学' | '英语' | '物理' | '化学' | '生物' | '历史' | '地理' | '政治'
+export type Subject = '语文' | '数学' | '英语' | '历史' | '地理' | '政治'
 export type MasteryLevel = '未掌握' | '薄弱' | '一般' | '良好' | '熟练'
 export type RiskLevel = '低' | '中' | '高'
 export type ErrorCause =
@@ -40,6 +40,7 @@ export interface QuestionRecord {
   knowledgePointName: string
   content: string
   imageDataUrl?: string
+  imageKey?: string
   studentAnswer?: string
   correctAnswer: string
   questionFormat: QuestionFormat
@@ -78,6 +79,7 @@ export interface MistakeRecord {
   knowledgePointName: string
   originalQuestion: string
   imageDataUrl?: string
+  imageKey?: string
   studentAnswer: string
   correctAnswer: string
   wrongAt: string
@@ -106,6 +108,7 @@ export interface PaperQuestionAnalysis {
   content: string
   correctAnswer: string
   studentAnswer: string
+  sourceImageKeys?: string[]
 }
 
 export interface PaperRecord {
@@ -116,6 +119,7 @@ export interface PaperRecord {
   fullScore: number
   score: number
   imageDataUrls: string[]
+  sourceImageKeys?: string[]
   questions: PaperQuestionAnalysis[]
   summary: {
     scoreRate: number
@@ -204,7 +208,7 @@ export interface QuizRecord {
 
 export interface StudyCard {
   id: string
-  category: '英文单词' | '英文短语' | '英文语法' | '古诗词' | '文言文' | '数学公式' | '物理规律' | '化学方程式' | '生物概念'
+  category: '英文单词' | '英文短语' | '英文语法' | '古诗词' | '文言文' | '数学公式' | '历史要点' | '地理规律' | '政治概念'
   subject: Subject
   front: string
   back: string

@@ -1,11 +1,20 @@
 import { createHmac, createHash, randomUUID } from 'node:crypto'
 
 const env = (name: string, fallback = '') => (process.env[name] ?? fallback).trim()
+const endpointValue = env('R2_ENDPOINT_HOST', env('R2_ENDPOINT'))
+const endpointHostFromValue = (() => {
+  if (!endpointValue) return ''
+  try {
+    return new URL(endpointValue.includes('://') ? endpointValue : `https://${endpointValue}`).host
+  } catch {
+    return endpointValue.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  }
+})()
 const accountId = env('R2_ACCOUNT_ID')
-const accessKeyId = env('R2_ACCESS_KEY_ID')
-const secretAccessKey = env('R2_SECRET_ACCESS_KEY')
-const bucket = env('R2_BUCKET_NAME')
-const endpointHost = env('R2_ENDPOINT_HOST', accountId ? `${accountId}.r2.cloudflarestorage.com` : '')
+const accessKeyId = env('R2_ACCESS_KEY_ID', env('R2_ACCESS_KEY'))
+const secretAccessKey = env('R2_SECRET_ACCESS_KEY', env('R2_SECRET_KEY'))
+const bucket = env('R2_BUCKET_NAME', env('R2_BUCKET'))
+const endpointHost = endpointHostFromValue || (accountId ? `${accountId}.r2.cloudflarestorage.com` : '')
 const expiresSeconds = Math.min(3600, Math.max(60, Number(env('R2_PRESIGN_SECONDS', '900'))))
 const maxZipBytes = Math.max(5, Number(env('MATERIAL_MAX_ZIP_MB', '100'))) * 1024 * 1024
 
@@ -79,6 +88,17 @@ export function createExtractedFileKey(userId: string, importId: string, fileNam
   return `${ownedPrefix(userId)}${importId}/files/${Date.now()}-${randomUUID()}-${safeStem(fileName)}${extension}`
 }
 
+
+export function createLearningAssetKey(
+  userId: string,
+  kind: 'question' | 'paper',
+  extension: string,
+) {
+  const safeExtension = extension.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'jpg'
+  const stamp = new Date().toISOString().slice(0, 10)
+  return `users/${userId}/learning-assets/${kind}/${stamp}/${Date.now()}-${randomUUID()}.${safeExtension}`
+}
+
 export function createUploadUrl(key: string) {
   return presign('PUT', key)
 }
@@ -97,7 +117,7 @@ export async function putObjectBuffer(key: string, body: Buffer, contentType: st
   const response = await fetch(createUploadUrl(key), {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
-    body,
+    body: body as unknown as BodyInit,
     signal: AbortSignal.timeout(180_000),
   })
   if (!response.ok) throw new Error(`写入 R2 文件失败（${response.status}）`)

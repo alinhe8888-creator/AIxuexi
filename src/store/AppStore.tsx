@@ -13,7 +13,7 @@ import { useAuth } from '../auth/useAuth'
 import { studentApi } from '../services/studentApi'
 import { clamp, getMasteryLevel, getRiskLevel, ratingMasteryDelta, reviewIntervalDays } from '../utils/learning'
 
-const STORAGE_KEY_PREFIX = 'ai-high-school-assistant:v2'
+const STORAGE_KEY_PREFIX = 'aixuexi:private-family:v3'
 const storageKey = (userId?: string) => `${STORAGE_KEY_PREFIX}:${userId || 'anonymous'}`
 
 const loadState = (userId?: string): AppState => {

@@ -65,18 +65,6 @@ export const FIXED_TEXTBOOK_VERSIONS = Object.fromEntries(
   TEXTBOOK_CATALOG.map((item) => [item.subject, item.version]),
 ) as Record<SupportedSubject, string>
 
-export const TEXTBOOK_OPTIONS = Object.fromEntries(
-  TEXTBOOK_CATALOG.map((item) => [item.subject, [item.version]]),
-) as Record<SupportedSubject, string[]>
-
 export function isSupportedSubject(value: string): value is SupportedSubject {
   return FIXED_SUBJECTS.includes(value as SupportedSubject)
-}
-
-export function getCatalogItem(subject: SupportedSubject): TextbookCatalogItem {
-  const item = TEXTBOOK_CATALOG.find((entry) => entry.subject === subject)
-  if (!item) {
-    throw new Error(`不支持的科目：${subject}`)
-  }
-  return item
 }

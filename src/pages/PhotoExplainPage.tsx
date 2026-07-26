@@ -7,7 +7,7 @@ import type { AiExplanation, ErrorCause, QuestionFormat, QuestionRecord, Subject
 import { compressImage } from '../utils/image'
 import { causeLabels } from '../utils/learning'
 
-const subjects: Subject[] = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治']
+const subjects: Subject[] = ['语文', '数学', '英语', '历史', '地理', '政治']
 const steps = ['上传图片', '确认题目', '分步讲解', '错因分析', '保存闭环']
 
 export function PhotoExplainPage() {
@@ -15,6 +15,7 @@ export function PhotoExplainPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [subject, setSubject] = useState<Subject>('数学')
   const [image, setImage] = useState<string>('')
+  const [imageKey, setImageKey] = useState('')
   const [fileName, setFileName] = useState('')
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [ocrError, setOcrError] = useState('')
@@ -52,6 +53,7 @@ export function PhotoExplainPage() {
       const compressed = await compressImage(file)
       setImage(compressed)
       setFileName(file.name)
+      setImageKey('')
       setOcrStatus('idle')
       setExplanation(null)
       setSaved(false)
@@ -66,6 +68,7 @@ export function PhotoExplainPage() {
     setOcrError('')
     try {
       const result = await learningApi.ocr.recognizeQuestion({ subject, imageDataUrl: image, fileName })
+      setImageKey(result.imageKey || '')
       setContent(result.content)
       setChapter(result.chapter)
       setKnowledgePoint(result.knowledgePointName)
@@ -98,14 +101,14 @@ export function PhotoExplainPage() {
     if (!explanation) return
     const question: QuestionRecord = {
       id: crypto.randomUUID(), subject, chapter, knowledgePointId: `kp-${subject}-${knowledgePoint}`.replace(/\s+/g, '-'), knowledgePointName: knowledgePoint,
-      content, imageDataUrl: image, studentAnswer, correctAnswer: correctAnswer || explanation.finalAnswer, questionFormat: format, sourceType: 'user_upload', explanation, createdAt: new Date().toISOString(),
+      content, imageKey: imageKey || undefined, studentAnswer, correctAnswer: correctAnswer || explanation.finalAnswer, questionFormat: format, sourceType: 'user_upload', explanation, createdAt: new Date().toISOString(),
     }
     saveMistake({ question, studentAnswer, primaryCause, secondaryCause: secondaryCause || undefined, note })
     setSaved(true)
   }
 
   const reset = () => {
-    setImage(''); setFileName(''); setOcrStatus('idle'); setContent(''); setChapter(''); setKnowledgePoint(''); setCorrectAnswer(''); setStudentAnswer(''); setExplanation(null); setRevealCount(0); setSaved(false); setInstantOpen(false); setInstantChecked(false); setInstantAnswer('')
+    setImage(''); setImageKey(''); setFileName(''); setOcrStatus('idle'); setContent(''); setChapter(''); setKnowledgePoint(''); setCorrectAnswer(''); setStudentAnswer(''); setExplanation(null); setRevealCount(0); setSaved(false); setInstantOpen(false); setInstantChecked(false); setInstantAnswer('')
   }
 
   return (
@@ -118,10 +121,10 @@ export function PhotoExplainPage() {
 
       <div className="content-grid upload-grid">
         <Card>
-          <SectionTitle title="1. 上传题目图片" description="支持 JPG、PNG、WEBP；图片仅保存在当前浏览器本地。" />
+          <SectionTitle title="1. 上传题目图片" description="支持 JPG、PNG、WEBP；图片会写入家庭私有 R2，并由 Qwen 深度理解。" />
           <div className={`upload-zone ${image ? 'has-image' : ''}`} onClick={() => !image && inputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void handleFile(event.dataTransfer.files[0]) }}>
             <input ref={inputRef} type="file" accept="image/*" hidden onChange={(event) => void handleFile(event.target.files?.[0])} />
-            {image ? <><img src={image} alt="题目预览" /><button className="image-remove" onClick={(event) => { event.stopPropagation(); setImage(''); setOcrStatus('idle') }}><X size={17} /></button><div className="image-caption"><FileImage size={16} />{fileName}</div></> : <><div className="upload-icon"><Upload size={28} /></div><strong>点击上传或拖入题目图片</strong><p>建议保证题目完整、文字清晰、画面端正</p></>}
+            {image ? <><img src={image} alt="题目预览" /><button className="image-remove" onClick={(event) => { event.stopPropagation(); setImage(''); setImageKey(''); setOcrStatus('idle') }}><X size={17} /></button><div className="image-caption"><FileImage size={16} />{fileName}</div></> : <><div className="upload-icon"><Upload size={28} /></div><strong>点击上传或拖入题目图片</strong><p>建议保证题目完整、文字清晰、画面端正</p></>}
           </div>
           <div className="form-row two">
             <label>科目<select value={subject} onChange={(event) => setSubject(event.target.value as Subject)}>{subjects.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} /></label>
@@ -132,8 +135,8 @@ export function PhotoExplainPage() {
         </Card>
 
         <Card>
-          <SectionTitle title="2. 确认识别结果" description="OCR 可能出错，进入讲解前请检查并修改。" action={ocrStatus === 'done' ? <Badge tone="success">可人工修改</Badge> : <Badge>等待识别</Badge>} />
-          {ocrStatus === 'loading' ? <LoadingState text="正在提取题目文字和知识点…" /> : (
+          <SectionTitle title="2. 确认识别结果" description="Qwen 会综合理解题干、公式和图表；进入讲解前仍可人工修正。" action={ocrStatus === 'done' ? <Badge tone="success">可人工修改</Badge> : <Badge>等待识别</Badge>} />
+          {ocrStatus === 'loading' ? <LoadingState text="Qwen 正在理解题目、章节和知识点…" /> : (
             <div className="form-stack">
               <label>题目内容<textarea rows={6} value={content} onChange={(event) => setContent(event.target.value)} placeholder="识别结果会显示在这里，也可以直接手动输入题目。" /></label>
               <div className="form-row two"><label>章节<input value={chapter} onChange={(event) => setChapter(event.target.value)} placeholder="例如：函数与导数" /></label><label>知识点<input value={knowledgePoint} onChange={(event) => setKnowledgePoint(event.target.value)} placeholder="例如：导数的几何意义" /></label></div>
@@ -189,7 +192,7 @@ export function PhotoExplainPage() {
 
       {explanation && revealCount > explanation.steps.length && (
         <Card className="save-closure-card">
-          <div><Save size={25} /><div><h3>保存后将完成学习闭环</h3><p>错题本、知识点掌握度、复习任务和首页计划会同步更新。</p></div></div>
+          <div><Save size={25} /><div><h3>保存后将完成学习闭环</h3><p>错题本、知识点掌握度、复习任务和每日计划会同步更新。</p></div></div>
           {saved ? <Badge tone="success"><Check size={15} />已保存并安排复习</Badge> : <Button onClick={save}><Save size={18} />保存到错题本</Button>}
         </Card>
       )}

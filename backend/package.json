@@ -1,6 +1,6 @@
 {
   "name": "aixuexi-backend",
-  "version": "1.4.0",
+  "version": "3.0.0-private",
   "private": true,
   "type": "module",
   "engines": {
@@ -30,5 +30,6 @@
     "@types/node": "^24.3.0",
     "@types/pg": "^8.15.5",
     "typescript": "^5.9.2"
-  }
+  },
+  "description": "AIxuexi 私人家庭后端：R2、Qwen、教材知识库与学习分析"
 }

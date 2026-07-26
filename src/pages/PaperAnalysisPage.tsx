@@ -9,7 +9,7 @@ import { toDateKey } from '../utils/date'
 import { compressImage } from '../utils/image'
 import { causeLabels } from '../utils/learning'
 
-const subjects: Subject[] = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治']
+const subjects: Subject[] = ['语文', '数学', '英语', '历史', '地理', '政治']
 
 export function PaperAnalysisPage() {
   const { state, addPaper, notify } = useAppStore()
@@ -66,7 +66,7 @@ export function PaperAnalysisPage() {
     const mainCauses = causeCounts.sort((a, b) => b.value - a.value).slice(0, 3).map((item) => item.label as ErrorCause)
     const weakKnowledgePoints = pointCounts.sort((a, b) => b.value - a.value).slice(0, 4).map((item) => item.label)
     const paper: PaperRecord = {
-      id: crypto.randomUUID(), title, subject, date, fullScore, score, imageDataUrls: images.map((item) => item.data), questions,
+      id: crypto.randomUUID(), title, subject, date, fullScore, score, imageDataUrls: [], sourceImageKeys: [...new Set(questions.flatMap((item) => item.sourceImageKeys || []))], questions,
       summary: { scoreRate, mainCauses, weakKnowledgePoints, weakChapters: [title], suggestions: [
         weakKnowledgePoints.length ? `优先订正：${weakKnowledgePoints.slice(0, 2).join('、')}` : '保持当前知识掌握',
         mainCauses.length ? `重点减少“${mainCauses[0]}”类错误` : '继续保持审题与步骤完整',
@@ -98,9 +98,9 @@ export function PaperAnalysisPage() {
         </Card>
 
         <Card>
-          <SectionTitle title="历史试卷" description="已保存的分析会保留在浏览器中" />
+          <SectionTitle title="历史试卷" description="已保存的分析会同步到家庭学习档案" />
           {state.papers.length ? <div className="paper-history">{state.papers.slice(0, 5).map((paper) => <div key={paper.id}><span className="paper-icon"><FileImage size={19} /></span><div><strong>{paper.title}</strong><span>{paper.subject} · {paper.date}</span></div><Badge tone={paper.summary.scoreRate >= 80 ? 'success' : paper.summary.scoreRate >= 60 ? 'warning' : 'danger'}>{paper.score}/{paper.fullScore}</Badge></div>)}</div> : <EmptyState title="还没有试卷记录" description="完成首次试卷分析后，趋势和薄弱章节会出现在这里。" />}
-          <Callout title="当前阶段如何体验">上传清晰试卷图片后，系统调用 Render 后端 OCR 接口拆分题目；未配置视觉模型时会返回可编辑的结构化兜底结果，保证流程不中断。所有识别字段都需要学生核对。</Callout>
+          <Callout title="当前阶段如何体验">上传清晰试卷图片后，系统调用 Render 后端 OCR 接口拆分题目；系统会调用 Qwen 深度识别整卷；识别字段仍需要人工核对。所有识别字段都需要学生核对。</Callout>
         </Card>
       </div>
 

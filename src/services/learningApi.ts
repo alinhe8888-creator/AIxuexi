@@ -1,78 +1,111 @@
-import type { AiExplanation, KnowledgeItem, PaperQuestionAnalysis, QuizQuestion, Subject } from '../types'
-import { ALLOW_API_FALLBACK, ApiError, apiRequest, USE_MOCK_API } from './apiClient'
-import { mockAiExplain, mockGenerateSimulation, mockOcrRecognize, mockPaperRecognition } from './mockApi'
+import type {
+  AiExplanation,
+  KnowledgeItem,
+  PaperQuestionAnalysis,
+  QuizQuestion,
+  Subject,
+} from '../types'
+import { apiRequest, USE_MOCK_API } from './apiClient'
 
-export interface OcrQuestionInput { subject: Subject; imageDataUrl: string; fileName?: string }
-export interface AiExplainInput { subject: Subject; content: string; correctAnswer?: string }
-export interface PaperRecognitionInput { subject: Subject; imageDataUrls: string[] }
-export interface SimulationInput { subject: Subject; points: Array<{ id: string; name: string }>; count: number }
-export interface KnowledgeSearchFilters { subject?: Subject; grade?: string; chapter?: string; knowledgePoint?: string; year?: number; region?: string; sourceType?: string; keyword?: string }
+export interface OcrQuestionInput {
+  subject: Subject
+  imageDataUrl: string
+  fileName?: string
+}
+export interface AiExplainInput {
+  subject: Subject
+  content: string
+  correctAnswer?: string
+}
+export interface PaperRecognitionInput {
+  subject: Subject
+  imageDataUrls: string[]
+}
+export interface SimulationInput {
+  subject: Subject
+  points: Array<{ id: string; name: string }>
+  count: number
+}
+export interface KnowledgeSearchFilters {
+  subject?: Subject
+  grade?: string
+  chapter?: string
+  knowledgePoint?: string
+  keyword?: string
+}
 
-const shouldFallback = (error: unknown) => ALLOW_API_FALLBACK && error instanceof ApiError && (error.status === 0 || error.status === 404 || error.status === 501 || error.status >= 502)
-const fallbackWarning = (feature: string, error: unknown) => console.warn(`[${feature}] Backend unavailable; switched to safe local fallback.`, error)
+function requireRealApi() {
+  if (USE_MOCK_API) {
+    throw new Error('当前构建仍启用了模拟接口，请把 VITE_USE_MOCK_API 设置为 false')
+  }
+}
 
 export const learningApi = {
   ocr: {
     async recognizeQuestion(input: OcrQuestionInput) {
-      if (USE_MOCK_API) return mockOcrRecognize(input.subject, input.fileName)
-      try {
-        return await apiRequest<Awaited<ReturnType<typeof mockOcrRecognize>>>('/api/ocr/question', { method: 'POST', body: JSON.stringify(input), timeoutMs: 75_000 })
-      } catch (error) {
-        if (!shouldFallback(error)) throw error
-        fallbackWarning('OCR question', error)
-        return mockOcrRecognize(input.subject, input.fileName)
-      }
+      requireRealApi()
+      return apiRequest<{
+        content: string
+        chapter: string
+        knowledgePointName: string
+        correctAnswer: string
+        questionFormat: '选择题' | '填空题' | '判断题' | '解答题' | '默写题'
+        confidence: number
+        imageKey: string
+      }>('/api/ocr/question', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 180_000,
+      })
     },
+
     async recognizePaper(input: PaperRecognitionInput): Promise<PaperQuestionAnalysis[]> {
-      if (USE_MOCK_API) return mockPaperRecognition(input.subject)
-      try {
-        return await apiRequest<PaperQuestionAnalysis[]>('/api/ocr/paper', { method: 'POST', body: JSON.stringify(input), timeoutMs: 90_000 })
-      } catch (error) {
-        if (!shouldFallback(error)) throw error
-        fallbackWarning('OCR paper', error)
-        return mockPaperRecognition(input.subject)
-      }
+      requireRealApi()
+      return apiRequest<PaperQuestionAnalysis[]>('/api/ocr/paper', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 300_000,
+      })
     },
   },
+
   ai: {
     async explainQuestion(input: AiExplainInput): Promise<AiExplanation> {
-      if (USE_MOCK_API) return mockAiExplain(input.subject, input.content, input.correctAnswer)
-      try {
-        return await apiRequest<AiExplanation>('/api/ai/explain', { method: 'POST', body: JSON.stringify(input), timeoutMs: 75_000 })
-      } catch (error) {
-        if (!shouldFallback(error)) throw error
-        fallbackWarning('AI explanation', error)
-        return mockAiExplain(input.subject, input.content, input.correctAnswer)
-      }
+      requireRealApi()
+      return apiRequest<AiExplanation>('/api/ai/explain', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 180_000,
+      })
     },
+
     async generateSimulation(input: SimulationInput): Promise<QuizQuestion[]> {
-      if (USE_MOCK_API) return mockGenerateSimulation(input.subject, input.points, input.count)
-      try {
-        return await apiRequest<QuizQuestion[]>('/api/ai/simulation', { method: 'POST', body: JSON.stringify(input), timeoutMs: 75_000 })
-      } catch (error) {
-        if (!shouldFallback(error)) throw error
-        fallbackWarning('AI simulation', error)
-        return mockGenerateSimulation(input.subject, input.points, input.count)
-      }
+      requireRealApi()
+      return apiRequest<QuizQuestion[]>('/api/ai/simulation', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 180_000,
+      })
     },
   },
+
   knowledge: {
     async search(filters: KnowledgeSearchFilters): Promise<KnowledgeItem[]> {
-      if (USE_MOCK_API) return []
-      const query = new URLSearchParams(Object.entries(filters).filter((entry): entry is [string, string | number] => entry[1] !== undefined && entry[1] !== '').map(([key, value]) => [key, String(value)]))
-      try {
-        return await apiRequest<KnowledgeItem[]>(`/api/knowledge?${query}`)
-      } catch (error) {
-        if (!shouldFallback(error)) throw error
-        fallbackWarning('Knowledge search', error)
-        return []
-      }
+      const query = new URLSearchParams(
+        Object.entries(filters)
+          .filter((entry): entry is [string, string] => Boolean(entry[1])),
+      )
+      return apiRequest<KnowledgeItem[]>(`/api/knowledge?${query}`)
     },
   },
+
   sync: {
     async pushLocalSnapshot(snapshot: unknown) {
-      if (USE_MOCK_API) return { ok: true, mode: 'mock' }
-      return apiRequest<{ ok: boolean }>('/api/sync/snapshot', { method: 'POST', body: JSON.stringify({ snapshot }), retry: 1 })
+      return apiRequest<{ ok: boolean }>('/api/sync/snapshot', {
+        method: 'POST',
+        body: JSON.stringify({ snapshot }),
+        retry: 1,
+      })
     },
   },
 }

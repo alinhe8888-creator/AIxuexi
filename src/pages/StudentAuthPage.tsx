@@ -21,7 +21,7 @@ export function StudentAuthPage() {
     try {
       await login(email.trim(), password)
       localStorage.setItem(LAST_EMAIL_KEY, email.trim())
-      navigate('/', { replace: true })
+      navigate('/photo-explain', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
     } finally {
