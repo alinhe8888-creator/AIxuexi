@@ -12,11 +12,51 @@ import { ParentProgressPage } from './pages/parent/ParentProgressPage'
 import { ParentReportsPage } from './pages/parent/ParentReportsPage'
 import { ParentSettingsPage } from './pages/parent/ParentSettingsPage'
 import './App.css'
-import './styles/private-family.css'
-function ScrollToTop() { const { pathname } = useLocation(); useEffect(() => window.scrollTo({ top: 0, behavior: 'auto' }), [pathname]); return null }
-function PublicOnly({ children }: { children: ReactNode }) { const { user } = useAuth(); if (user) return <Navigate to="/" replace />; return children }
+
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => window.scrollTo({ top: 0, behavior: 'instant' }), [pathname])
+  return null
+}
+
+function PublicOnly({ children }: { children: ReactNode }) {
+  const { user, status } = useAuth()
+  if (status === 'loading') return null
+  if (user) return <Navigate to="/" replace />
+  return children
+}
+
 function ParentDashboardApp() {
   const location = useLocation()
-  return <ParentDataProvider><ParentLayout><div className="route-view"><AppErrorBoundary key={location.pathname}><Routes><Route path="/" element={<ParentHomePage />} /><Route path="/progress" element={<ParentProgressPage />} /><Route path="/mistakes" element={<ParentMistakesPage />} /><Route path="/reports" element={<ParentReportsPage />} /><Route path="/settings" element={<ParentSettingsPage />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></AppErrorBoundary></div></ParentLayout></ParentDataProvider>
+  return (
+    <ParentDataProvider>
+      <ParentLayout>
+        <div className="route-view">
+          <AppErrorBoundary key={location.pathname}>
+          <Routes>
+            <Route path="/" element={<ParentHomePage />} />
+            <Route path="/progress" element={<ParentProgressPage />} />
+            <Route path="/mistakes" element={<ParentMistakesPage />} />
+            <Route path="/reports" element={<ParentReportsPage />} />
+            <Route path="/settings" element={<ParentSettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          </AppErrorBoundary>
+        </div>
+      </ParentLayout>
+    </ParentDataProvider>
+  )
 }
-export default function ParentPortal() { return <><ScrollToTop /><Routes><Route path="/login" element={<PublicOnly><ParentAuthPage /></PublicOnly>} /><Route path="/register" element={<Navigate to="/login" replace />} /><Route path="/*" element={<RequireRole role="parent"><ParentDashboardApp /></RequireRole>} /></Routes></> }
+
+export default function ParentPortal() {
+  return (
+    <>
+      <ScrollToTop />
+      <Routes>
+        <Route path="/login" element={<PublicOnly><ParentAuthPage /></PublicOnly>} />
+        <Route path="/register" element={<PublicOnly><ParentAuthPage /></PublicOnly>} />
+        <Route path="/*" element={<RequireRole role="parent"><ParentDashboardApp /></RequireRole>} />
+      </Routes>
+    </>
+  )
+}
