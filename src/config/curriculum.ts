@@ -1,6 +1,4 @@
-import type { Subject } from '../types'
-
-export type SupportedSubject = Extract<Subject, '语文' | '数学' | '英语' | '历史' | '地理' | '政治'>
+export type SupportedSubject = '语文' | '数学' | '英语' | '历史' | '地理' | '政治'
 
 export interface TextbookCatalogItem {
   subject: SupportedSubject
@@ -55,7 +53,9 @@ export const TEXTBOOK_CATALOG: readonly TextbookCatalogItem[] = [
   },
 ] as const
 
-export const FIXED_SUBJECTS = TEXTBOOK_CATALOG.map((item) => item.subject) as SupportedSubject[]
+export const FIXED_SUBJECTS = TEXTBOOK_CATALOG.map(
+  (item) => item.subject,
+) as SupportedSubject[]
 
 export const SUBJECT_DISPLAY_NAMES = Object.fromEntries(
   TEXTBOOK_CATALOG.map((item) => [item.subject, item.displayName]),
@@ -73,6 +73,10 @@ export function isSupportedSubject(value: string): value is SupportedSubject {
   return FIXED_SUBJECTS.includes(value as SupportedSubject)
 }
 
-export function getCatalogItem(subject: SupportedSubject) {
-  return TEXTBOOK_CATALOG.find((item) => item.subject === subject)!
+export function getCatalogItem(subject: SupportedSubject): TextbookCatalogItem {
+  const item = TEXTBOOK_CATALOG.find((entry) => entry.subject === subject)
+  if (!item) {
+    throw new Error(`不支持的科目：${subject}`)
+  }
+  return item
 }
