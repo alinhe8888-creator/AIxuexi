@@ -3,112 +3,71 @@ import { parentApi } from '../services/parentApi'
 import type { ParentChildSummary, ParentDashboard } from '../types'
 import { ParentDataContext } from './ParentDataContextObject'
 
-const CHILDREN_CACHE_KEY = 'aixuexi:family:children'
-const DASHBOARD_CACHE_KEY = 'aixuexi:family:dashboard'
+const SELECTED_KEY = 'aixuexi:parent:selected-child'
+const CACHE_KEY = 'aixuexi:parent:last-data'
 
-function readCache<T>(key: string, fallback: T): T {
+function readCache(): { children: ParentChildSummary[]; dashboard: ParentDashboard | null } {
   try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return { children: [], dashboard: null }
+    const value = JSON.parse(raw) as { children?: ParentChildSummary[]; dashboard?: ParentDashboard | null }
+    return { children: value.children ?? [], dashboard: value.dashboard ?? null }
   } catch {
-    return fallback
+    return { children: [], dashboard: null }
   }
 }
 
 export function ParentDataProvider({ children: content }: { children: ReactNode }) {
-  const [children, setChildren] = useState<ParentChildSummary[]>(() =>
-    readCache<ParentChildSummary[]>(CHILDREN_CACHE_KEY, []),
-  )
-  const [selectedChildId, setSelectedChildIdState] = useState(() => children[0]?.id || '')
-  const [dashboard, setDashboard] = useState<ParentDashboard | null>(() =>
-    readCache<ParentDashboard | null>(DASHBOARD_CACHE_KEY, null),
-  )
-  const [loading, setLoading] = useState(children.length === 0)
+  const cached = readCache()
+  const [children, setChildren] = useState<ParentChildSummary[]>(cached.children)
+  const [selectedChildId, setSelectedChildIdState] = useState(() => localStorage.getItem(SELECTED_KEY) || cached.children[0]?.id || '')
+  const [dashboard, setDashboard] = useState<ParentDashboard | null>(cached.dashboard)
+  const [loading, setLoading] = useState(!cached.dashboard)
   const [error, setError] = useState('')
 
   const setSelectedChildId = useCallback((id: string) => {
     setSelectedChildIdState(id)
+    if (id) localStorage.setItem(SELECTED_KEY, id)
+    else localStorage.removeItem(SELECTED_KEY)
   }, [])
 
   const load = useCallback(async () => {
-    setLoading(true)
+    if (!dashboard) setLoading(true)
     setError('')
-
     try {
       const nextChildren = await parentApi.listChildren()
-      const child = nextChildren[0]
-
       setChildren(nextChildren)
-      localStorage.setItem(CHILDREN_CACHE_KEY, JSON.stringify(nextChildren))
-
-      if (!child) {
-        setSelectedChildIdState('')
-        setError('未找到自动关联的学习账号，请确认 Render 的 FAMILY_STUDENT_EMAIL。')
+      const targetId = nextChildren.some((item) => item.id === selectedChildId) ? selectedChildId : nextChildren[0]?.id || ''
+      if (targetId !== selectedChildId) setSelectedChildId(targetId)
+      if (!targetId) {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ children: nextChildren, dashboard: null }))
+        setDashboard(null)
         return
       }
-
-      setSelectedChildIdState(child.id)
-
-      const nextDashboard = await parentApi.getDashboard(child.id)
+      const nextDashboard = await parentApi.getDashboard(targetId)
       setDashboard(nextDashboard)
-      localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(nextDashboard))
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ children: nextChildren, dashboard: nextDashboard }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '学习数据同步失败')
-      // Keep the cached dashboard instead of clearing the whole page.
+      setError(err instanceof Error ? err.message : '同步失败')
+      // 保留上一次数据，不再因为一次网络失败清空页面。
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dashboard, selectedChildId, setSelectedChildId])
 
+  useEffect(() => { void load() }, [load])
   useEffect(() => {
-    void load()
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') void load()
-    }
-
-    window.addEventListener('focus', load)
-    document.addEventListener('visibilitychange', handleVisibility)
-
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void load() }
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => {
-      window.removeEventListener('focus', load)
-      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [load])
 
-  // Kept for context API compatibility. Family mode no longer uses codes or unlinking.
-  const linkChild = useCallback(async (_code: string) => {
-    await load()
-  }, [load])
-
-  const unlinkChild = useCallback(async (_id: string) => {
-    await load()
-  }, [load])
-
-  const value = useMemo(
-    () => ({
-      children,
-      selectedChildId,
-      dashboard,
-      loading,
-      error,
-      setSelectedChildId,
-      refresh: load,
-      linkChild,
-      unlinkChild,
-    }),
-    [
-      children,
-      selectedChildId,
-      dashboard,
-      loading,
-      error,
-      setSelectedChildId,
-      load,
-      linkChild,
-      unlinkChild,
-    ],
-  )
-
+  const linkChild = useCallback(async (code: string) => { await parentApi.linkChild(code); await load() }, [load])
+  const unlinkChild = useCallback(async (id: string) => { await parentApi.unlinkChild(id); if (selectedChildId === id) setSelectedChildId(''); await load() }, [load, selectedChildId, setSelectedChildId])
+  const value = useMemo(() => ({ children, selectedChildId, dashboard, loading, error, setSelectedChildId, refresh: load, linkChild, unlinkChild }), [children, selectedChildId, dashboard, loading, error, setSelectedChildId, load, linkChild, unlinkChild])
   return <ParentDataContext.Provider value={value}>{content}</ParentDataContext.Provider>
 }
