@@ -1,20 +1,22 @@
-import { Download, Moon, RefreshCw, Save, Settings, Sun, Upload } from 'lucide-react'
+import { Copy, Download, KeyRound, Moon, RefreshCw, Save, Settings, Sun, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Badge, Button, Callout, Card, Modal, PageHeader, SectionTitle } from '../components/ui'
+import { studentApi } from '../services/studentApi'
 import { useAppStore } from '../store/useAppStore'
 import type { AppSettings, StudentProfile, Subject } from '../types'
 
 const allSubjects: Subject[] = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治']
+
 const textbookOptions: Partial<Record<Subject, string[]>> = {
-  语文: ['人教版', '苏教版', '粤教版'],
-  数学: ['人教 A 版', '人教 B 版', '北师大版'],
-  英语: ['人教版', '外研版', '译林版'],
+  语文: ['人教版（人民教育出版社）'],
+  数学: ['人教版（A 版）（人民教育出版社）'],
+  英语: ['外研版（外语教学与研究出版社）'],
   物理: ['人教版', '鲁科版', '粤教版'],
   化学: ['人教版', '鲁科版', '苏教版'],
   生物: ['人教版', '苏教版', '浙科版'],
-  历史: ['统编版'],
-  地理: ['人教版', '湘教版', '鲁教版'],
-  政治: ['统编版'],
+  历史: ['人教版（部编版）·必修《中外历史纲要》上、下册'],
+  地理: ['人教版（人民教育出版社）'],
+  政治: ['人教版（部编版）'],
 }
 
 export function SettingsPage() {
@@ -22,6 +24,8 @@ export function SettingsPage() {
   const [profile, setProfile] = useState<StudentProfile>({ ...state.profile })
   const [settings, setSettings] = useState<AppSettings>({ ...state.settings })
   const [resetOpen, setResetOpen] = useState(false)
+  const [pairCode, setPairCode] = useState<{ code: string; expiresAt: string } | null>(null)
+  const [pairLoading, setPairLoading] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
 
   const toggleSubject = (subject: Subject) => {
@@ -36,6 +40,19 @@ export function SettingsPage() {
   const saveProfile = () => updateProfile(profile)
   const saveSettings = () => updateSettings(settings)
 
+  const createPairCode = async () => {
+    setPairLoading(true)
+    try {
+      const result = await studentApi.createPairCode()
+      setPairCode(result)
+      notify('success', '家庭绑定码已生成', '请在 15 分钟内完成绑定。')
+    } catch (error) {
+      notify('error', '绑定码生成失败', error instanceof Error ? error.message : '请稍后重试')
+    } finally {
+      setPairLoading(false)
+    }
+  }
+
   const downloadData = () => {
     const blob = new Blob([exportData()], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -49,6 +66,7 @@ export function SettingsPage() {
 
   const readImport = async (file?: File) => {
     if (!file) return
+
     try {
       const text = await file.text()
       importData(text)
@@ -63,7 +81,7 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="学习设置"
         title="设置"
-        description="管理年级、科目、教材版本、学习强度和讲解偏好。"
+        description="管理年级、科目、教材版本、学习时间和讲解方式。"
         actions={<Badge tone="success">自动同步</Badge>}
       />
 
@@ -80,6 +98,7 @@ export function SettingsPage() {
                     onChange={(event) => setProfile({ ...profile, name: event.target.value })}
                   />
                 </label>
+
                 <label>
                   年级
                   <select
@@ -152,10 +171,13 @@ export function SettingsPage() {
               {profile.selectedSubjects.map((subject) => (
                 <div key={subject}>
                   <strong>{subject}</strong>
+
                   <label>
                     教材版本
                     <select
-                      value={profile.textbookVersions[subject] || textbookOptions[subject]?.[0] || '统编版'}
+                      value={textbookOptions[subject]?.includes(profile.textbookVersions[subject] || '')
+                        ? profile.textbookVersions[subject]
+                        : textbookOptions[subject]?.[0] || '统编版'}
                       onChange={(event) =>
                         setProfile({
                           ...profile,
@@ -171,6 +193,7 @@ export function SettingsPage() {
                       ))}
                     </select>
                   </label>
+
                   <label>
                     当前章节
                     <input
@@ -241,7 +264,7 @@ export function SettingsPage() {
             <div className="setting-row">
               <div>
                 <strong>每日提醒</strong>
-                <span>保存提醒时间，供后续通知功能使用</span>
+                <span>保存每天的提醒时间</span>
               </div>
               <button
                 className={`switch ${settings.dailyReminder ? 'on' : ''}`}
@@ -278,6 +301,7 @@ export function SettingsPage() {
                 <Sun size={21} />
                 <strong>浅色</strong>
               </button>
+
               <button
                 className={settings.theme === 'dark' ? 'active' : ''}
                 onClick={() => setSettings({ ...settings, theme: 'dark' })}
@@ -285,6 +309,7 @@ export function SettingsPage() {
                 <Moon size={21} />
                 <strong>深色</strong>
               </button>
+
               <button
                 className={settings.theme === 'system' ? 'active' : ''}
                 onClick={() => setSettings({ ...settings, theme: 'system' })}
@@ -293,9 +318,42 @@ export function SettingsPage() {
                 <strong>跟随系统</strong>
               </button>
             </div>
+
             <Button variant="secondary" onClick={saveSettings}>
               应用主题
             </Button>
+          </Card>
+
+          <Card>
+            <SectionTitle title="家庭绑定" description="生成一次性绑定码，家里另一台设备输入后即可查看学习情况" />
+            {pairCode ? (
+              <div className="student-pair-code">
+                <span>绑定码</span>
+                <strong>{pairCode.code}</strong>
+                <small>
+                  有效期至{' '}
+                  {new Date(pairCode.expiresAt).toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </small>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(pairCode.code)
+                    notify('success', '绑定码已复制')
+                  }}
+                >
+                  <Copy size={16} />
+                  复制绑定码
+                </Button>
+              </div>
+            ) : (
+              <Button variant="secondary" onClick={() => void createPairCode()} disabled={pairLoading}>
+                <KeyRound size={17} />
+                {pairLoading ? '正在生成…' : '生成 6 位绑定码'}
+              </Button>
+            )}
           </Card>
 
           <Card>
@@ -305,10 +363,12 @@ export function SettingsPage() {
                 <Download size={17} />
                 导出 JSON
               </Button>
+
               <Button variant="secondary" onClick={() => importRef.current?.click()}>
                 <Upload size={17} />
                 导入 JSON
               </Button>
+
               <input
                 ref={importRef}
                 hidden
@@ -316,14 +376,14 @@ export function SettingsPage() {
                 accept="application/json"
                 onChange={(event) => void readImport(event.target.files?.[0])}
               />
+
               <Button variant="danger" onClick={() => setResetOpen(true)}>
                 <RefreshCw size={17} />
                 清空本地数据
               </Button>
             </div>
-            <Callout title="云端同步">
-              学习数据会同步到后端；这里的导入导出只用于额外备份。
-            </Callout>
+
+            <Callout title="数据同步">学习记录会自动同步；导入和导出用于额外备份。</Callout>
           </Card>
         </div>
       </div>
@@ -350,7 +410,7 @@ export function SettingsPage() {
           </>
         }
       >
-        <p>这会清除当前浏览器中的本地学习记录。云端已有数据不会因本操作自动删除。</p>
+        <p>这会清除当前浏览器中的本地学习记录，已经同步的数据不会自动删除。</p>
       </Modal>
     </div>
   )
