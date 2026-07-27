@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { curriculumPrompt, isSupportedSubject, type SupportedSubject } from './curriculum.js'
+import { curriculumPrompt, getBookById, isSupportedSubject, matchBook, type SupportedSubject } from './curriculum.js'
 
 const env = (name: string, fallback = '') => (process.env[name] ?? fallback).trim()
 const normalizeBase = (value: string) => value.replace(/\/+$/, '')
@@ -12,13 +12,17 @@ export type KnowledgeItemPayload = {
   chapter: string
   knowledgePoint: string
   questionType: '选择题' | '填空题' | '判断题' | '解答题' | '默写题'
-  sourceType: 'user_upload'
+  sourceType: 'user_upload' | 'open_resource'
   title: string
   content: string
   answer: string
   explanation: string
   tags: string[]
   materialId: string
+  bookId?: string
+  bookTitle?: string
+  resourceKind?: 'textbook' | 'workbook' | 'exam' | 'question-bank' | 'notes' | 'custom'
+  sourceName?: string
   sourceFile: string
   sourcePath: string
   createdAt: string
@@ -52,7 +56,7 @@ async function qwenJson(messages: ChatMessage[]) {
       stream: false,
       temperature: 0.1,
       max_tokens: 16000,
-      enable_thinking: true,
+      enable_thinking: false,
     }
     if (withFormat) body.response_format = { type: 'json_object' }
 
@@ -169,7 +173,7 @@ export async function extractRemoteDocumentText(
         ],
       }],
       stream: false,
-      enable_thinking: true,
+      enable_thinking: false,
       max_tokens: 16000,
     }),
     signal: AbortSignal.timeout(timeoutMs),
@@ -200,6 +204,11 @@ function normalizeKnowledgeRows(
     sourcePath: string
     subjectHint?: string
     gradeHint?: string
+    bookId?: string
+    bookTitle?: string
+    resourceKind?: 'textbook' | 'workbook' | 'exam' | 'question-bank' | 'notes' | 'custom'
+    sourceName?: string
+    sourceType?: 'user_upload' | 'open_resource'
   },
 ): KnowledgeItemPayload[] {
   const raw = Array.isArray(value)
@@ -208,6 +217,11 @@ function normalizeKnowledgeRows(
       ? (value as Record<string, unknown>).items as unknown[]
       : []
   const createdAt = new Date().toISOString()
+  const hintedSubject = context.subjectHint && isSupportedSubject(context.subjectHint)
+    ? context.subjectHint
+    : undefined
+  const selectedBook = context.bookId ? getBookById(context.bookId) : undefined
+  const inferredBook = selectedBook || (hintedSubject ? matchBook(hintedSubject, `${context.fileName} ${context.sourcePath} ${context.bookTitle || ''}`) : undefined)
 
   return raw.flatMap((item) => {
     if (!item || typeof item !== 'object') return []
@@ -230,13 +244,17 @@ function normalizeKnowledgeRows(
           ? String(row.questionType)
           : '解答题'
       ) as KnowledgeItemPayload['questionType'],
-      sourceType: 'user_upload' as const,
+      sourceType: context.sourceType || 'user_upload',
       title: title.slice(0, 160),
       content: content.slice(0, 8000),
       answer: String(row.answer || row.keyPoints || '').trim().slice(0, 6000),
       explanation: String(row.explanation || row.easyExplanation || '').trim().slice(0, 8000),
       tags: normalizeList(row.tags, 12),
       materialId: context.materialId,
+      bookId: context.bookId || inferredBook?.id,
+      bookTitle: context.bookTitle || inferredBook?.title,
+      resourceKind: context.resourceKind || 'textbook',
+      sourceName: context.sourceName || '家庭上传资料',
       sourceFile: context.fileName,
       sourcePath: context.sourcePath,
       createdAt,
@@ -252,6 +270,11 @@ export async function buildKnowledgeFromText(
     sourcePath: string
     subjectHint?: string
     gradeHint?: string
+    bookId?: string
+    bookTitle?: string
+    resourceKind?: 'textbook' | 'workbook' | 'exam' | 'question-bank' | 'notes' | 'custom'
+    sourceName?: string
+    sourceType?: 'user_upload' | 'open_resource'
   },
 ) {
   const cleanText = text.replace(/\u0000/g, '').trim()
@@ -276,7 +299,7 @@ export async function buildKnowledgeFromText(
           '你是家庭高中学习系统的教材知识库构建模型，不是简单 OCR。',
           curriculumPrompt,
           '只能依据用户上传资料，不得补写资料中没有的事实。',
-          '需要理解章节层级、概念之间的关系、公式/规则、典型题型、易错点和生活化解释。',
+          '需要理解书册、章节层级、概念之间的关系、公式/规则、典型题型、易错点和生活化解释。',
           '输出 JSON：{"items":[{"subject":"数学","grade":"高一","chapter":"章节","knowledgePoint":"知识点","questionType":"解答题","title":"标题","content":"准确知识内容","answer":"核心结论","explanation":"容易理解的解释","tags":["标签"]}]}。',
           '每个分块提取 3—15 个高价值条目，避免重复和空泛。',
         ].join('\n'),
@@ -288,6 +311,9 @@ export async function buildKnowledgeFromText(
           `内部路径：${context.sourcePath}`,
           `科目提示：${context.subjectHint || '自动判断'}`,
           `年级提示：${context.gradeHint || '自动判断'}`,
+          `书册：${context.bookTitle || context.bookId || '自动判断'}`,
+          `资料类型：${context.resourceKind || 'textbook'}`,
+          `来源名称：${context.sourceName || '家庭上传资料'}`,
           `分块：${index + 1}/${chunks.length}`,
           '',
           chunks[index] ?? '',

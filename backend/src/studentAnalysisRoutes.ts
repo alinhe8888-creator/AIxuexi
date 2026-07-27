@@ -74,7 +74,7 @@ async function callAnalysisModel(messages: unknown[]) {
     max_tokens: 12_000,
     response_format: { type: 'json_object' },
   }
-  if (provider === 'qwen') body.enable_thinking = true
+  if (provider === 'qwen') body.enable_thinking = false
   if (provider === 'deepseek') {
     body.thinking = { type: process.env.DEEPSEEK_THINKING === 'disabled' ? 'disabled' : 'enabled' }
     body.reasoning_effort = process.env.DEEPSEEK_REASONING_EFFORT || 'high'

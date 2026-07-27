@@ -42,7 +42,7 @@ export function MistakeBookPage() {
 
       <Card className="filter-card">
         <div className="filter-top">
-          <Segmented value={view} options={[{ value: 'active', label: '全部错题' }, { value: 'due', label: '待复习' }, { value: 'archived', label: '已掌握' }]} onChange={setView} />
+          <Segmented<ViewMode> value={view} options={[{ value: 'active', label: '全部错题' }, { value: 'due', label: '待复习' }, { value: 'archived', label: '已掌握' }]} onChange={setView} />
           <div className="search-box"><Search size={17} /><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索题目或知识点" /></div>
         </div>
         <div className="filter-row">

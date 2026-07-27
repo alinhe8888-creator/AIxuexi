@@ -83,6 +83,14 @@ export function createMaterialZipKey(userId: string, fileName: string) {
   return `${ownedPrefix(userId)}${stamp}/${Date.now()}-${randomUUID()}-${safeStem(fileName)}.zip`
 }
 
+export function createMaterialSourceKey(userId: string, fileName: string) {
+  const stamp = new Date().toISOString().slice(0, 10)
+  const extension = fileName.includes('.')
+    ? `.${fileName.split('.').pop()!.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`
+    : ''
+  return `${ownedPrefix(userId)}${stamp}/${Date.now()}-${randomUUID()}-${safeStem(fileName)}${extension}`
+}
+
 export function createExtractedFileKey(userId: string, importId: string, fileName: string) {
   const extension = fileName.includes('.') ? `.${fileName.split('.').pop()!.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}` : ''
   return `${ownedPrefix(userId)}${importId}/files/${Date.now()}-${randomUUID()}-${safeStem(fileName)}${extension}`

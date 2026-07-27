@@ -68,17 +68,27 @@ const questionFormatSchema = z.enum(['选择题', '填空题', '判断题', '解
 const simulationSchema = z.object({
   subject: subjectSchema,
   points: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
-  count: z.number().int().min(1).max(20).default(5),
-  mode: z.enum(['mini', 'paper']).default('mini'),
+  bookId: z.string().max(120).optional(),
+  bookTitle: z.string().max(240).optional(),
+  chapter: z.string().max(240).optional(),
+  count: z.number().int().min(1).max(30).default(5),
+  mode: z.enum(['mini', 'paper', 'sprint']).default('mini'),
   formats: z.array(questionFormatSchema).min(1).max(5).default(['选择题', '填空题', '解答题']),
   difficulty: z.enum(['基础', '中等', '提高', '混合']).default('混合'),
   durationMinutes: z.number().int().min(5).max(180).default(25),
+  sourceScopes: z.array(z.string().max(60)).max(8).default(['textbook']),
+  examDate: z.string().max(40).optional(),
+  sprintFocus: z.string().max(500).optional(),
 })
 const studyCycleSchema = z.object({
   mode: z.enum(['preview', 'review']),
   subject: subjectSchema,
-  chapter: z.string().max(200).default(''),
-  knowledgePoint: z.string().max(200).default(''),
+  bookId: z.string().min(1).max(120),
+  bookTitle: z.string().min(1).max(240),
+  chapter: z.string().max(240).default(''),
+  knowledgePoint: z.string().max(240).default(''),
+  customGoal: z.string().max(800).optional(),
+  sourceScopes: z.array(z.string().max(60)).max(8).default(['textbook']),
   duration: z.number().int().min(10).max(60).default(25),
   depth: z.enum(['快速', '标准', '深入']).default('标准'),
 }).refine((value) => Boolean(value.chapter.trim() || value.knowledgePoint.trim()), {
@@ -119,7 +129,7 @@ async function aiJson(input: {
   ).replace(/\/+$/, '')
   const model = input.model || (
     useDeepSeek
-      ? process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+      ? process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
       : input.provider === 'vision'
         ? process.env.QWEN_VISION_MODEL || process.env.AI_VISION_MODEL || 'qwen3.7-plus'
         : process.env.QWEN_TEXT_MODEL || process.env.QWEN_MODEL || process.env.AI_MODEL || 'qwen3.7-plus'
@@ -133,7 +143,11 @@ async function aiJson(input: {
       temperature: 0.15,
       max_tokens: input.maxTokens || 12_000,
     }
-    if (!useDeepSeek) body.enable_thinking = input.enableThinking ?? true
+    if (useDeepSeek) {
+      body.thinking = { type: (input.enableThinking ?? false) ? 'enabled' : 'disabled' }
+    } else {
+      body.enable_thinking = input.enableThinking ?? false
+    }
     if (withFormat) body.response_format = { type: 'json_object' }
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -175,14 +189,27 @@ async function knowledgeContext(
   studentId: string,
   subject: SupportedSubject,
   keywords: string[],
+  filters: { bookId?: string; chapter?: string; sourceScopes?: string[] } = {},
 ) {
   const records = await store.listRecords(studentId, 'knowledge-items')
   const normalizedKeywords = keywords.map((item) => item.trim()).filter(Boolean)
   const items = records
     .map((record) => record.payload as Record<string, unknown>)
     .filter((item) => item.subject === subject)
+    .filter((item) => !filters.bookId || !item.bookId || item.bookId === filters.bookId)
+    .filter((item) => !filters.chapter || !item.chapter || String(item.chapter).includes(filters.chapter) || filters.chapter.includes(String(item.chapter)))
+    .filter((item) => {
+      if (!filters.sourceScopes?.length) return true
+      const kind = String(item.resourceKind || 'textbook')
+      if (filters.sourceScopes.includes(kind)) return true
+      if (filters.sourceScopes.includes('mistakes') && kind === 'notes') return true
+      return false
+    })
     .map((item) => ({
       title: String(item.title || ''),
+      bookTitle: String(item.bookTitle || ''),
+      sourceName: String(item.sourceName || ''),
+      resourceKind: String(item.resourceKind || 'textbook'),
       chapter: String(item.chapter || ''),
       knowledgePoint: String(item.knowledgePoint || ''),
       content: String(item.content || ''),
@@ -200,7 +227,8 @@ async function knowledgeContext(
 
   if (!items.length) return '当前没有已上传教材知识，请严格按固定教材版本分析。'
   return items.map((item, index) => [
-    `【教材知识 ${index + 1}】${item.chapter} / ${item.knowledgePoint}`,
+    `【知识库 ${index + 1}】${item.bookTitle || '家庭资料'} · ${item.chapter} / ${item.knowledgePoint}`,
+    `来源：${item.sourceName || item.resourceKind}`,
     item.title,
     item.content,
     item.answer,
@@ -329,14 +357,18 @@ router.post('/ai/explain', ...studentOnly, asyncRoute(async (req, res) => {
 router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
   const input = simulationSchema.parse(req.body)
   const names = input.points.map((point) => point.name).filter(Boolean)
-  const context = await knowledgeContext(req.user!.id, input.subject, names)
-  const modeLabel = input.mode === 'paper' ? '整套模拟卷' : '专项小练'
+  const context = await knowledgeContext(req.user!.id, input.subject, [input.chapter || '', ...names], {
+    bookId: input.bookId,
+    chapter: input.chapter,
+    sourceScopes: input.sourceScopes,
+  })
+  const modeLabel = input.mode === 'paper' ? '整套模拟卷' : input.mode === 'sprint' ? '考前冲刺卷' : '专项小练'
   const formatText = input.formats.join('、')
   const result = await aiJson({
     provider: 'text',
-    maxTokens: input.mode === 'paper'
-      ? Math.max(7_000, Math.min(16_000, input.count * 720))
-      : Math.max(3_000, Math.min(9_000, input.count * 680)),
+    maxTokens: input.mode === 'mini'
+      ? Math.max(3_000, Math.min(9_000, input.count * 680))
+      : Math.max(7_000, Math.min(20_000, input.count * 760)),
     enableThinking: false,
     requestTimeoutMs: 360_000,
     messages: [
@@ -350,7 +382,9 @@ router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
           '必须严格按照用户选择的题量、题型和难度生成。',
           input.mode === 'paper'
             ? '当前为整套模拟卷：题目要有合理顺序，先基础后综合，题型分布尽量均衡。'
-            : '当前为专项小练：围绕所选知识点集中出题，避免无关内容。',
+            : input.mode === 'sprint'
+              ? '当前为考前冲刺卷：优先高频考点、基础得分、个人错题和易错点；控制题目篇幅，模拟限时压力，并在解析中给出时间分配、检查顺序和舍题策略。'
+              : '当前为专项小练：围绕所选知识点集中出题，避免无关内容。',
           '只返回 JSON：{"questions":[...]}。',
           '每题字段：id,subject,knowledgePointId,knowledgePointName,content,format,options,correctAnswer,explanation,sourceType。',
           'format 只能使用用户指定题型；选择题必须返回 options，其他题型 options 可省略。',
@@ -365,8 +399,13 @@ router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
         content: [
           `模式：${modeLabel}`,
           `科目：${input.subject}`,
-          `教材：${fixedTextbookVersions[input.subject]}`,
-          `知识点：${names.join('、') || '当前章节综合内容'}`,
+          `教材版本：${fixedTextbookVersions[input.subject]}`,
+          `指定书册：${input.bookTitle || '未指定'}`,
+          `指定章节：${input.chapter || '全册综合'}`,
+          `知识点：${names.join('、') || '所选章节综合内容'}`,
+          `题源范围：${input.sourceScopes.join('、') || '已上传教材'}`,
+          input.mode === 'sprint' ? `考试日期：${input.examDate || '近期考试'}` : '',
+          input.mode === 'sprint' ? `冲刺重点：${input.sprintFocus || '高频易错、基础得分和个人薄弱点'}` : '',
           `题量：必须正好 ${input.count} 道`,
           `允许题型：${formatText}`,
           `难度：${input.difficulty}`,
@@ -401,8 +440,12 @@ router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
 
 router.post('/ai/study-cycle', ...studentOnly, asyncRoute(async (req, res) => {
   const input = studyCycleSchema.parse(req.body)
-  const keywords = [input.chapter, input.knowledgePoint].filter(Boolean)
-  const context = await knowledgeContext(req.user!.id, input.subject, keywords)
+  const keywords = [input.bookTitle, input.chapter, input.knowledgePoint, input.customGoal || ''].filter(Boolean)
+  const context = await knowledgeContext(req.user!.id, input.subject, keywords, {
+    bookId: input.bookId,
+    chapter: input.chapter,
+    sourceScopes: input.sourceScopes,
+  })
   const modeLabel = input.mode === 'preview' ? '预习' : '复习'
   const result = await aiJson({
     provider: 'text',
@@ -435,9 +478,12 @@ router.post('/ai/study-cycle', ...studentOnly, asyncRoute(async (req, res) => {
         content: [
           `模式：${modeLabel}`,
           `科目：${input.subject}`,
-          `教材：${fixedTextbookVersions[input.subject]}`,
+          `教材版本：${fixedTextbookVersions[input.subject]}`,
+          `指定书册：${input.bookTitle}`,
           `章节：${input.chapter || '未指定'}`,
           `知识点：${input.knowledgePoint || '未指定'}`,
+          `自己的要求：${input.customGoal || '无'}`,
+          `参考资料范围：${input.sourceScopes.join('、') || '已上传教材'}`,
           `可用时间：${input.duration} 分钟`,
           `深度：${input.depth}`,
         ].join('\n'),

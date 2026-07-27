@@ -1,28 +1,22 @@
-# Existing required values
-NODE_ENV=production
-DATABASE_URL=
-JWT_SECRET=
-CORS_ORIGIN=https://aixuexi-29x.pages.dev,https://aixuexi-parent.pages.dev
+# 资料知识库最小环境变量模板
+AI_TIMEOUT_MS=300000
+MATERIAL_MAX_ZIP_MB=500
 
-# Cloudflare R2
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=aixuexi
+R2_ENDPOINT_HOST=
 R2_PRESIGN_SECONDS=900
-MATERIAL_MAX_ZIP_MB=100
 
-# Qwen: PDF and image extraction
-# Prefer the workspace-specific compatible-mode/v1 base URL from Model Studio.
 QWEN_API_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 QWEN_API_KEY=
 QWEN_OCR_MODEL=qwen3.5-ocr
-QWEN_VISION_MODEL=qwen3-vl-flash
+QWEN_VISION_MODEL=qwen3.7-plus
+QWEN_TEXT_MODEL=qwen3.7-plus
 
-# DeepSeek: knowledge structuring and explanations
 DEEPSEEK_API_BASE_URL=https://api.deepseek.com
 DEEPSEEK_API_KEY=
 DEEPSEEK_MODEL=deepseek-v4-pro
 DEEPSEEK_THINKING=disabled
 DEEPSEEK_REASONING_EFFORT=high
-AI_TIMEOUT_MS=120000

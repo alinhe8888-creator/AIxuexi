@@ -6,7 +6,13 @@ import type {
   Subject,
   QuestionFormat,
 } from '../types'
-import type { StudyCycleResult, StudyCycleMode, StudyDepth, SimulationDifficulty, SimulationMode } from '../utils/familyLearningWorkspace'
+import type {
+  StudyCycleResult,
+  StudyCycleMode,
+  StudyDepth,
+  SimulationDifficulty,
+  SimulationMode,
+} from '../utils/familyLearningWorkspace'
 import { apiRequest, USE_MOCK_API } from './apiClient'
 
 export interface OcrQuestionInput {
@@ -25,18 +31,28 @@ export interface PaperRecognitionInput {
 }
 export interface SimulationInput {
   subject: Subject
+  bookId?: string
+  bookTitle?: string
+  chapter?: string
   points: Array<{ id: string; name: string }>
   count: number
   mode?: SimulationMode
   formats?: QuestionFormat[]
   difficulty?: SimulationDifficulty
   durationMinutes?: number
+  sourceScopes?: string[]
+  examDate?: string
+  sprintFocus?: string
 }
 export interface StudyCycleInput {
   mode: StudyCycleMode
   subject: Subject
+  bookId: string
+  bookTitle: string
   chapter: string
   knowledgePoint: string
+  customGoal?: string
+  sourceScopes?: string[]
   duration: number
   depth: StudyDepth
 }
@@ -45,6 +61,8 @@ export interface KnowledgeSearchFilters {
   grade?: string
   chapter?: string
   knowledgePoint?: string
+  bookId?: string
+  resourceKind?: string
   keyword?: string
 }
 
@@ -98,7 +116,7 @@ export const learningApi = {
       return apiRequest<QuizQuestion[]>('/api/ai/simulation', {
         method: 'POST',
         body: JSON.stringify(input),
-        timeoutMs: 360_000,
+        timeoutMs: input.mode === 'sprint' ? 480_000 : 360_000,
         retry: 1,
       })
     },

@@ -47,5 +47,6 @@ export const sourceLabels = {
   user_upload: '用户上传',
   real_exam: '公开真题',
   ai_generated: 'AI 生成',
+  open_resource: '开放资源',
   demo: '演示题',
 } as const

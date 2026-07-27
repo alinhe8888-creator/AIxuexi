@@ -12,7 +12,7 @@ export type ErrorCause =
   | '粗心'
   | '时间不足'
 
-export type SourceType = 'user_upload' | 'real_exam' | 'ai_generated' | 'demo'
+export type SourceType = 'user_upload' | 'real_exam' | 'ai_generated' | 'open_resource' | 'demo'
 export type TaskType = 'study' | 'review' | 'quiz'
 export type TaskStatus = 'pending' | 'completed'
 export type QuestionFormat = '选择题' | '填空题' | '判断题' | '解答题' | '默写题'
@@ -238,6 +238,14 @@ export interface KnowledgeItem {
   answer: string
   explanation: string
   tags: string[]
+  bookId?: string
+  bookTitle?: string
+  resourceKind?: 'textbook' | 'workbook' | 'exam' | 'question-bank' | 'notes' | 'custom'
+  sourceName?: string
+  sourceFile?: string
+  sourcePath?: string
+  materialId?: string
+  createdAt?: string
 }
 
 export interface ActivityLog {
@@ -336,4 +344,10 @@ export interface ParentDashboard {
   alerts: Array<{ level: 'high' | 'medium'; title: string; description: string }>
   activity: Array<{ id: string; type: string; title: string; description: string; createdAt: string }>
   recommendations: Array<{ priority: number; title: string; description: string }>
+  dailyActivity: Array<{ date: string; completionRate: number; plannedMinutes: number; completedMinutes: number }>
+  mistakeTrend: Array<{ date: string; count: number }>
+  masteryDistribution: Array<{ label: string; value: number }>
+  reviewStatus: Array<{ label: string; value: number }>
+  learningMix: Array<{ label: string; value: number }>
+  subjectRadar: Array<{ label: string; mastery: number; accuracy: number; stability: number }>
 }

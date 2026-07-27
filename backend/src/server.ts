@@ -70,7 +70,7 @@ app.get('/api/health', async (_req, res, next) => {
     res.json({
       ok: true,
       service: 'aixuexi-api',
-      version: '3.0.0-private',
+      version: '4.0.0-final',
       database: config.useMemoryDb ? 'memory' : 'postgres',
       r2Configured: isR2Ready(),
       qwenConfigured: Boolean(process.env.QWEN_API_KEY || process.env.AI_API_KEY),
@@ -345,7 +345,7 @@ async function start() {
   })
 
   app.listen(config.port, '0.0.0.0', () => {
-    console.log(`AIxuexi API v3.0.0-private listening on port ${config.port}`)
+    console.log(`AIxuexi API v4.0.0-final listening on port ${config.port}`)
   })
 }
 

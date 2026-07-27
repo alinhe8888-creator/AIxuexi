@@ -2,7 +2,7 @@ import type { QuestionFormat, QuizQuestion, Subject } from '../types'
 
 export type StudyCycleMode = 'preview' | 'review'
 export type StudyDepth = '快速' | '标准' | '深入'
-export type SimulationMode = 'mini' | 'paper'
+export type SimulationMode = 'mini' | 'paper' | 'sprint'
 export type SimulationDifficulty = '基础' | '中等' | '提高' | '混合'
 
 export interface StudyCycleResult {
@@ -19,6 +19,8 @@ export interface StudySession {
   id: string
   mode: StudyCycleMode
   subject: Subject
+  bookId: string
+  bookTitle: string
   chapter: string
   knowledgePoint: string
   duration: number
@@ -42,6 +44,9 @@ export interface ProfileAssessmentResult {
 export interface SimulationDraft {
   mode: SimulationMode
   subject: Subject
+  bookId: string
+  chapter: string
+  sourceScopes: string[]
   pointIds: string[]
   customPoint: string
   count: number
@@ -56,7 +61,7 @@ export interface SimulationDraft {
 
 const SESSION_KEY = 'aixuexi:study-sessions:v1'
 const ASSESSMENT_KEY = 'aixuexi:profile-assessment:v1'
-const SIMULATION_KEY = 'aixuexi:simulation-draft:v2'
+const SIMULATION_KEY = 'aixuexi:simulation-draft:v3'
 const COMPLETION_KEY = 'aixuexi:daily-completions:v1'
 
 function safeParse<T>(value: string | null, fallback: T): T {

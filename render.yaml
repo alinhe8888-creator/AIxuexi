@@ -19,13 +19,37 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         sync: false
-      - key: AI_API_BASE_URL
+      - key: AI_TIMEOUT_MS
+        value: 300000
+      - key: QWEN_API_KEY
         sync: false
-      - key: AI_API_KEY
+      - key: QWEN_API_BASE_URL
+        value: https://dashscope.aliyuncs.com/compatible-mode/v1
+      - key: QWEN_TEXT_MODEL
+        value: qwen3.7-plus
+      - key: QWEN_VISION_MODEL
+        value: qwen3.7-plus
+      - key: DEEPSEEK_API_KEY
         sync: false
-      - key: AI_MODEL
-        value: gpt-4.1-mini
-      - key: AI_VISION_MODEL
-        value: gpt-4.1-mini
+      - key: DEEPSEEK_API_BASE_URL
+        value: https://api.deepseek.com
+      - key: DEEPSEEK_MODEL
+        value: deepseek-v4-pro
+      - key: DEEPSEEK_THINKING
+        value: disabled
+      - key: DEEPSEEK_REASONING_EFFORT
+        value: high
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_BASE_URL
+        sync: false
       - key: MAX_JSON_MB
         value: 30
+      - key: MATERIAL_MAX_ZIP_MB
+        value: 500

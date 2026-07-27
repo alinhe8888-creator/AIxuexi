@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   FileText,
+  Flame,
   LoaderCircle,
   RotateCcw,
   Sparkles,
@@ -11,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { getBookById, getBooksBySubject } from '../config/curriculum'
 import { learningApi } from '../services/learningApi'
 import { useAppStore } from '../store/useAppStore'
 import type { QuestionFormat, QuizQuestion, Subject } from '../types'
@@ -25,6 +27,13 @@ import {
 
 const formats: QuestionFormat[] = ['选择题', '填空题', '判断题', '解答题', '默写题']
 const difficulties: SimulationDifficulty[] = ['基础', '中等', '提高', '混合']
+const sourceOptions = [
+  { id: 'textbook', label: '已上传教材' },
+  { id: 'workbook', label: '练习册/讲义' },
+  { id: 'mistakes', label: '个人错题' },
+  { id: 'exam', label: '真题/试卷' },
+  { id: 'question-bank', label: '开放题源' },
+]
 
 function normalized(value: string) {
   return value.replace(/\s+/g, '').replace(/[，。；：、]/g, '').toLowerCase()
@@ -37,6 +46,12 @@ function questionCorrect(question: QuizQuestion, answer: string) {
   return user === correct || correct.includes(user) || user.includes(correct)
 }
 
+const modeLabel: Record<SimulationMode, string> = {
+  mini: '专项小练',
+  paper: '整套模拟卷',
+  sprint: '考前冲刺',
+}
+
 export function SimulationPage() {
   const { state } = useAppStore()
   const restored = loadSimulationDraft()
@@ -44,6 +59,10 @@ export function SimulationPage() {
   const defaultSubject: Subject = subjects[0] || '数学'
   const [mode, setMode] = useState<SimulationMode>(restored?.mode || 'mini')
   const [subject, setSubject] = useState<Subject>(restored?.subject || defaultSubject)
+  const books = useMemo(() => getBooksBySubject(subject), [subject])
+  const [bookId, setBookId] = useState(restored?.bookId || books[0]?.id || '')
+  const selectedBook = useMemo(() => getBookById(bookId) || books[0], [bookId, books])
+  const [chapter, setChapter] = useState(restored?.chapter || '')
   const points = useMemo(
     () => state.knowledgePoints.filter((item) => item.subject === subject).sort((a, b) => a.mastery - b.mastery),
     [state.knowledgePoints, subject],
@@ -54,13 +73,16 @@ export function SimulationPage() {
   const [selectedFormats, setSelectedFormats] = useState<QuestionFormat[]>(restored?.formats || ['选择题', '填空题', '解答题'])
   const [difficulty, setDifficulty] = useState<SimulationDifficulty>(restored?.difficulty || '混合')
   const [durationMinutes, setDurationMinutes] = useState(restored?.durationMinutes || 25)
+  const [sourceScopes, setSourceScopes] = useState<string[]>(restored?.sourceScopes?.length ? restored.sourceScopes : ['textbook', 'mistakes'])
+  const [examDate, setExamDate] = useState('')
+  const [sprintFocus, setSprintFocus] = useState('高频易错、基础得分和个人薄弱点')
   const [questions, setQuestions] = useState<QuizQuestion[]>(restored?.questions || [])
   const [answers, setAnswers] = useState<Record<string, string>>(restored?.answers || {})
   const [submitted, setSubmitted] = useState(restored?.submitted || false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const effectiveCount = mode === 'paper' ? count : Math.min(count, 10)
+  const effectiveCount = mode === 'mini' ? Math.min(count, 10) : count
   const score = questions.length
     ? Math.round((questions.filter((question) => questionCorrect(question, answers[question.id] || '')).length / questions.length) * 100)
     : 0
@@ -69,6 +91,9 @@ export function SimulationPage() {
     const draft: SimulationDraft = {
       mode,
       subject,
+      bookId,
+      chapter,
+      sourceScopes,
       pointIds,
       customPoint,
       count,
@@ -85,9 +110,28 @@ export function SimulationPage() {
 
   const changeMode = (next: SimulationMode) => {
     setMode(next)
-    setCount(next === 'paper' ? 20 : 5)
-    setDurationMinutes(next === 'paper' ? 90 : 25)
-    if (next === 'paper') setSelectedFormats(['选择题', '填空题', '解答题'])
+    if (next === 'mini') {
+      setCount(5)
+      setDurationMinutes(25)
+    } else if (next === 'paper') {
+      setCount(20)
+      setDurationMinutes(90)
+      setSelectedFormats(['选择题', '填空题', '解答题'])
+    } else {
+      setCount(15)
+      setDurationMinutes(45)
+      setDifficulty('混合')
+      setSelectedFormats(['选择题', '填空题', '解答题'])
+      setSourceScopes(['textbook', 'mistakes', 'exam'])
+    }
+  }
+
+  const changeSubject = (next: Subject) => {
+    setSubject(next)
+    const nextBook = getBooksBySubject(next)[0]
+    setBookId(nextBook?.id || '')
+    setChapter('')
+    setPointIds([])
   }
 
   const toggleFormat = (format: QuestionFormat) => {
@@ -95,10 +139,10 @@ export function SimulationPage() {
       ? current.length === 1 ? current : current.filter((item) => item !== format)
       : [...current, format])
   }
-
-  const togglePoint = (id: string) => {
-    setPointIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
-  }
+  const togglePoint = (id: string) => setPointIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  const toggleSource = (id: string) => setSourceScopes((current) => current.includes(id)
+    ? current.length === 1 ? current : current.filter((item) => item !== id)
+    : [...current, id])
 
   const generate = async () => {
     setLoading(true)
@@ -110,17 +154,26 @@ export function SimulationPage() {
       if (customPoint.trim()) selectedPoints.push({ id: `custom-${Date.now()}`, name: customPoint.trim() })
       const generated = await learningApi.ai.generateSimulation({
         subject,
+        bookId: selectedBook?.id,
+        bookTitle: selectedBook?.title,
+        chapter,
         points: selectedPoints,
         count: effectiveCount,
         mode,
         formats: selectedFormats,
         difficulty,
         durationMinutes,
+        sourceScopes,
+        examDate: examDate || undefined,
+        sprintFocus: mode === 'sprint' ? sprintFocus.trim() : undefined,
       })
       setQuestions(generated)
       saveSimulationDraft({
         mode,
         subject,
+        bookId,
+        chapter,
+        sourceScopes,
         pointIds,
         customPoint,
         count,
@@ -144,7 +197,6 @@ export function SimulationPage() {
     setAnswers(next)
     persist({ answers: next })
   }
-
   const reset = () => {
     clearSimulationDraft()
     setQuestions([])
@@ -153,91 +205,54 @@ export function SimulationPage() {
     setError('')
   }
 
+  const countOptions = mode === 'mini' ? [3, 5, 8, 10] : mode === 'paper' ? [12, 15, 20, 25] : [10, 15, 20]
+  const timeOptions = mode === 'mini' ? [10, 15, 25, 40] : mode === 'paper' ? [45, 60, 90, 120] : [20, 30, 45, 60]
+
   return (
     <div className="family-page simulation-v160">
       <header className="family-page-header">
         <div>
-          <span className="family-eyebrow"><Sparkles size={15} /> 按需要出题，不再固定一套模板</span>
+          <span className="family-eyebrow"><Sparkles size={15} /> 专项、整卷和考前冲刺三种训练</span>
           <h1>模拟训练</h1>
-          <p>可以生成整套模拟卷，也可以只练 3—10 道题；题型、难度和知识点都能自己选。</p>
+          <p>按教材书册、章节、题型、题源和个人薄弱点生成，考前可切换冲刺版本。</p>
         </div>
         {questions.length > 0 && <button className="family-secondary-button" onClick={reset}><RotateCcw size={16} /> 重新设置</button>}
       </header>
 
       {!questions.length && (
         <section className="simulation-builder">
-          <div className="simulation-mode-grid">
-            <button className={mode === 'mini' ? 'active' : ''} onClick={() => changeMode('mini')}>
-              <Target size={24} /><span><strong>专项小练</strong><small>3、5、8 或 10 道题，快速验证一个知识点</small></span>
-            </button>
-            <button className={mode === 'paper' ? 'active' : ''} onClick={() => changeMode('paper')}>
-              <FileText size={24} /><span><strong>整套模拟卷</strong><small>12、15 或 20 道题，按考试结构混合题型</small></span>
-            </button>
+          <div className="simulation-mode-grid simulation-mode-grid--three">
+            <button className={mode === 'mini' ? 'active' : ''} onClick={() => changeMode('mini')}><Target size={24} /><span><strong>专项小练</strong><small>3—10 道，集中验证一个知识点</small></span></button>
+            <button className={mode === 'paper' ? 'active' : ''} onClick={() => changeMode('paper')}><FileText size={24} /><span><strong>整套模拟卷</strong><small>按考试结构组合章节和题型</small></span></button>
+            <button className={mode === 'sprint' ? 'active sprint' : 'sprint'} onClick={() => changeMode('sprint')}><Flame size={24} /><span><strong>考前冲刺</strong><small>限时、高频、易错和得分策略</small></span></button>
           </div>
 
           <div className="simulation-form-grid">
-            <label>科目
-              <span className="select-wrap"><select value={subject} onChange={(event) => { setSubject(event.target.value as Subject); setPointIds([]) }}>{subjects.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} /></span>
-            </label>
-            <label>题量
-              <span className="select-wrap"><select value={count} onChange={(event) => setCount(Number(event.target.value))}>{(mode === 'paper' ? [12, 15, 20] : [3, 5, 8, 10]).map((item) => <option key={item} value={item}>{item} 道</option>)}</select><ChevronDown size={16} /></span>
-            </label>
-            <label>建议时间
-              <span className="select-wrap"><select value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}>{(mode === 'paper' ? [45, 60, 90, 120] : [10, 15, 25, 40]).map((item) => <option key={item} value={item}>{item} 分钟</option>)}</select><ChevronDown size={16} /></span>
-            </label>
+            <label>科目<span className="select-wrap"><select value={subject} onChange={(event) => changeSubject(event.target.value as Subject)}>{subjects.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={16} /></span></label>
+            <label>教材书册<span className="select-wrap"><select value={bookId} onChange={(event) => { setBookId(event.target.value); setChapter('') }}>{books.map((book) => <option key={book.id} value={book.id}>{book.shortTitle} · {book.grade}</option>)}</select><ChevronDown size={16} /></span></label>
+            <label>章节<span className="select-wrap"><select value={chapter} onChange={(event) => setChapter(event.target.value)}><option value="">全册/综合</option>{selectedBook?.chapters.map((item) => <option key={item} value={item}>{item}</option>)}</select><ChevronDown size={16} /></span></label>
+            <label>题量<span className="select-wrap"><select value={count} onChange={(event) => setCount(Number(event.target.value))}>{countOptions.map((item) => <option key={item} value={item}>{item} 道</option>)}</select><ChevronDown size={16} /></span></label>
+            <label>建议时间<span className="select-wrap"><select value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}>{timeOptions.map((item) => <option key={item} value={item}>{item} 分钟</option>)}</select><ChevronDown size={16} /></span></label>
+            {mode === 'sprint' && <label>考试日期<input type="date" value={examDate} onChange={(event) => setExamDate(event.target.value)} /></label>}
           </div>
 
-          <div className="simulation-section">
-            <div className="simulation-section-title"><strong>难度</strong><span>整套卷建议选择“混合”</span></div>
-            <div className="option-pills">{difficulties.map((item) => <button key={item} className={difficulty === item ? 'active' : ''} onClick={() => setDifficulty(item)}>{item}</button>)}</div>
-          </div>
+          {mode === 'sprint' && <div className="sprint-focus-card"><Flame size={21} /><label><strong>冲刺重点</strong><input value={sprintFocus} onChange={(event) => setSprintFocus(event.target.value)} placeholder="例如：选择题速度、古诗文易错、函数高频考点" /></label><p>系统会优先安排短时可提分内容，并给出时间分配和舍题策略。</p></div>}
 
-          <div className="simulation-section">
-            <div className="simulation-section-title"><strong>题型</strong><span>至少保留一种题型</span></div>
-            <div className="format-checkbox-grid">{formats.map((format) => <label key={format} className={selectedFormats.includes(format) ? 'active' : ''}><input type="checkbox" checked={selectedFormats.includes(format)} onChange={() => toggleFormat(format)} /><span>{format}</span></label>)}</div>
-          </div>
-
-          <div className="simulation-section">
-            <div className="simulation-section-title"><strong>知识点</strong><span>不选择时按当前章节综合出题</span></div>
-            {points.length > 0 && <div className="point-chip-grid">{points.slice(0, 12).map((point) => <button key={point.id} className={pointIds.includes(point.id) ? 'active' : ''} onClick={() => togglePoint(point.id)}><span>{point.name}</span><small>掌握 {point.mastery}%</small></button>)}</div>}
-            <input className="custom-point-input" value={customPoint} onChange={(event) => setCustomPoint(event.target.value)} placeholder="也可以手动输入知识点，例如：函数单调性" />
-          </div>
+          <div className="simulation-section"><div className="simulation-section-title"><strong>难度</strong><span>{mode === 'sprint' ? '冲刺版建议混合难度，先保基础分' : '整套卷建议选择“混合”'}</span></div><div className="option-pills">{difficulties.map((item) => <button key={item} className={difficulty === item ? 'active' : ''} onClick={() => setDifficulty(item)}>{item}</button>)}</div></div>
+          <div className="simulation-section"><div className="simulation-section-title"><strong>题型</strong><span>至少保留一种题型</span></div><div className="format-checkbox-grid">{formats.map((format) => <label key={format} className={selectedFormats.includes(format) ? 'active' : ''}><input type="checkbox" checked={selectedFormats.includes(format)} onChange={() => toggleFormat(format)} /><span>{format}</span></label>)}</div></div>
+          <div className="simulation-section"><div className="simulation-section-title"><strong>题源范围</strong><span>优先从家庭知识库和个人数据生成，不直接抓取未知网站</span></div><div className="format-checkbox-grid">{sourceOptions.map((option) => <label key={option.id} className={sourceScopes.includes(option.id) ? 'active' : ''}><input type="checkbox" checked={sourceScopes.includes(option.id)} onChange={() => toggleSource(option.id)} /><span>{option.label}</span></label>)}</div></div>
+          <div className="simulation-section"><div className="simulation-section-title"><strong>知识点</strong><span>不选择时按所选书册与章节综合出题</span></div>{points.length > 0 && <div className="point-chip-grid">{points.slice(0, 12).map((point) => <button key={point.id} className={pointIds.includes(point.id) ? 'active' : ''} onClick={() => togglePoint(point.id)}><span>{point.name}</span><small>掌握 {point.mastery}%</small></button>)}</div>}<input className="custom-point-input" value={customPoint} onChange={(event) => setCustomPoint(event.target.value)} placeholder="可手动输入知识点或老师指定范围" /></div>
 
           {error && <div className="family-error">{error}</div>}
-          <button className="family-generate-button" disabled={loading} onClick={generate}>
-            {loading ? <><LoaderCircle className="spin" size={19} /> 正在生成 {effectiveCount} 道题，请不要关闭页面</> : <><Sparkles size={19} /> 生成{mode === 'paper' ? '整套模拟卷' : `${effectiveCount} 道专项题`}</>}
-          </button>
+          <button className="family-generate-button" disabled={loading || !selectedBook} onClick={generate}>{loading ? <><LoaderCircle className="spin" size={19} /> 正在生成 {effectiveCount} 道题，请不要关闭页面</> : <><Sparkles size={19} /> 生成{modeLabel[mode]}</>}</button>
         </section>
       )}
 
       {questions.length > 0 && (
         <section className="simulation-paper">
-          <div className="simulation-paper-head">
-            <div><span>{subject} · {mode === 'paper' ? '整套模拟卷' : '专项小练'}</span><h2>{questions.length} 道题 · {difficulty}难度</h2><p>建议用时 {durationMinutes} 分钟。先独立完成，提交后统一查看答案和解析。</p></div>
-            <div className="simulation-timer"><Timer size={19} /><strong>{durationMinutes}</strong><span>分钟</span></div>
-          </div>
-
-          <div className="simulation-question-list">
-            {questions.map((question, index) => {
-              const isCorrect = submitted && questionCorrect(question, answers[question.id] || '')
-              return (
-                <article key={question.id} className={submitted ? (isCorrect ? 'is-correct' : 'is-wrong') : ''}>
-                  <div className="simulation-question-head"><span>{index + 1}</span><div><b>{question.format}</b><em>{question.knowledgePointName}</em></div>{submitted && (isCorrect ? <CheckCircle2 size={20} /> : <XCircle size={20} />)}</div>
-                  <h3>{question.content}</h3>
-                  {question.options?.length ? (
-                    <div className="simulation-options">{question.options.map((option) => <label key={option}><input type="radio" name={`question-${question.id}`} disabled={submitted} checked={answers[question.id] === option} onChange={() => updateAnswer(question.id, option)} />{option}</label>)}</div>
-                  ) : <textarea disabled={submitted} value={answers[question.id] || ''} onChange={(event) => updateAnswer(question.id, event.target.value)} placeholder="写下你的答案或解题步骤" />}
-                  {submitted && <div className="simulation-explanation"><strong>参考答案：{question.correctAnswer}</strong><p>{question.explanation}</p></div>}
-                </article>
-              )
-            })}
-          </div>
-
-          {!submitted ? (
-            <button className="family-generate-button" onClick={() => { setSubmitted(true); persist({ submitted: true }) }}><ClipboardCheck size={19} /> 提交并查看解析</button>
-          ) : (
-            <div className="simulation-result-bar"><div><span>本次得分</span><strong>{score}%</strong><p>{score >= 80 ? '掌握不错，可以进入下一知识点。' : score >= 60 ? '基本掌握，建议再复习错题。' : '先返回预习复习，重新梳理薄弱点。'}</p></div><button onClick={reset}>再出一组</button></div>
-          )}
+          <div className="simulation-paper-head"><div><span>{subject} · {selectedBook?.shortTitle} · {modeLabel[mode]}</span><h2>{questions.length} 道题 · {difficulty}难度</h2><p>建议用时 {durationMinutes} 分钟。先独立完成，提交后统一查看答案和解析。</p></div><div className="simulation-timer"><Timer size={19} /><strong>{durationMinutes}</strong><span>分钟</span></div></div>
+          <div className="simulation-question-list">{questions.map((question, index) => { const isCorrect = submitted && questionCorrect(question, answers[question.id] || ''); return <article key={question.id} className={submitted ? (isCorrect ? 'is-correct' : 'is-wrong') : ''}><div className="simulation-question-head"><span>{index + 1}</span><div><b>{question.format}</b><em>{question.knowledgePointName}</em></div>{submitted && (isCorrect ? <CheckCircle2 size={20} /> : <XCircle size={20} />)}</div><h3>{question.content}</h3>{question.options?.length ? <div className="simulation-options">{question.options.map((option) => <label key={option}><input type="radio" name={`question-${question.id}`} disabled={submitted} checked={answers[question.id] === option} onChange={() => updateAnswer(question.id, option)} />{option}</label>)}</div> : <textarea disabled={submitted} value={answers[question.id] || ''} onChange={(event) => updateAnswer(question.id, event.target.value)} placeholder="写下你的答案或解题步骤" />}{submitted && <div className="simulation-explanation"><strong>参考答案：{question.correctAnswer}</strong><p>{question.explanation}</p></div>}</article> })}</div>
+          {!submitted ? <button className="family-generate-button" onClick={() => { setSubmitted(true); persist({ submitted: true }) }}><ClipboardCheck size={19} /> 提交并查看解析</button> : <div className="simulation-result-bar"><div><span>本次得分</span><strong>{score}%</strong><p>{score >= 80 ? '掌握不错，可以进入下一知识点。' : score >= 60 ? '基本掌握，建议再复习错题。' : '先返回预习复习，重新梳理薄弱点。'}</p></div><button onClick={reset}>再出一组</button></div>}
         </section>
       )}
     </div>

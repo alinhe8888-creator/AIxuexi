@@ -1,7 +1,7 @@
 {
   "name": "aixuexi-separated-portals",
   "private": true,
-  "version": "3.0.0-private",
+  "version": "4.0.0-final",
   "type": "module",
   "scripts": {
     "dev": "vite --mode student",
