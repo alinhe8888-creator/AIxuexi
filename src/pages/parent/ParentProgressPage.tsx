@@ -16,7 +16,7 @@ export function ParentProgressPage() {
     </div>
     <div className="parent-chart-grid">
       <Card><SectionTitle title="掌握层级分布" /><DonutBreakdown items={dashboard.masteryDistribution} centerLabel="知识点" /></Card>
-      <Card><SectionTitle title="复习任务状态" /><DonutBreakdown items={dashboard.reviewStatus} centerLabel="复习" />{dashboard.overview.highRiskCount > 0 && <div className="risk-note"><AlertCircle size={18} /><span>{dashboard.overview.highRiskCount} 个知识点处于高遗忘风险。</span></div>}</Card>
+      <Card><SectionTitle title="错题订正闭环" /><DonutBreakdown items={dashboard.reviewStatus} centerLabel="订正" />{dashboard.overview.highRiskCount > 0 && <div className="risk-note"><AlertCircle size={18} /><span>{dashboard.overview.highRiskCount} 个知识点处于高遗忘风险。</span></div>}</Card>
     </div>
     <Card><SectionTitle title="薄弱知识点明细" description="按掌握度从低到高排列" /><div className="parent-knowledge-table"><div className="table-head"><span>知识点</span><span>掌握度</span><span>正确率</span><span>错误次数</span><span>风险</span></div>{dashboard.weakPoints.map((point) => <div className="table-row" key={point.id}><div><strong>{point.subject} · {point.name}</strong><small>{point.chapter}</small></div><span>{point.mastery}%</span><span>{point.accuracy}%</span><span>{point.errorCount}</span><Badge tone={point.forgettingRisk === '高' ? 'danger' : 'warning'}>{point.forgettingRisk || '中'}</Badge></div>)}</div></Card>
   </div>

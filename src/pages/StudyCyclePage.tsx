@@ -17,7 +17,7 @@ import { getBookById, getBooksBySubject } from '../config/curriculum'
 import { learningApi } from '../services/learningApi'
 import { materialApi } from '../services/materialApi'
 import { useAppStore } from '../store/useAppStore'
-import type { KnowledgeItem, Subject } from '../types'
+import type { ErrorCause, KnowledgeItem, Subject } from '../types'
 import {
   deleteStudySession,
   loadStudySessions,
@@ -40,7 +40,7 @@ const sourceOptions = [
 export function StudyCyclePage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { state } = useAppStore()
+  const { state, applySimulation, notify } = useAppStore()
   const initialMode = (location.state as { mode?: StudyCycleMode } | null)?.mode || 'preview'
   const [mode, setMode] = useState<StudyCycleMode>(initialMode)
   const subjects = state.profile.selectedSubjects.length ? state.profile.selectedSubjects : (['数学'] as Subject[])
@@ -64,6 +64,8 @@ export function StudyCyclePage() {
   const [sessions, setSessions] = useState<StudySession[]>(() => loadStudySessions())
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [checked, setChecked] = useState(false)
+  const [checkingAnswers, setCheckingAnswers] = useState(false)
+  const [selfGrades, setSelfGrades] = useState<Record<string, { correct: boolean; score: number; feedback: string; errorCause: ErrorCause }>>({})
 
   const weakPoints = useMemo(
     () => state.knowledgePoints.filter((item) => item.subject === subject).sort((a, b) => a.mastery - b.mastery),
@@ -122,6 +124,7 @@ export function StudyCyclePage() {
     setLoading(true)
     setError('')
     setChecked(false)
+    setSelfGrades({})
     setAnswers({})
     try {
       const response = await learningApi.ai.generateStudyCycle({
@@ -169,8 +172,50 @@ export function StudyCyclePage() {
     setDepth(session.depth)
     setResult(session.result)
     setChecked(false)
+    setSelfGrades({})
     setAnswers({})
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const checkSelfTest = async () => {
+    if (!result?.selfCheck.length) return
+    if (result.selfCheck.some((question) => !(answers[question.id] || '').trim())) {
+      notify('info', '还有自测题未完成', '全部作答后再统一批改。')
+      return
+    }
+    setCheckingAnswers(true)
+    setError('')
+    try {
+      const graded = await learningApi.ai.gradeSimulation({
+        subject,
+        questions: result.selfCheck.map((question) => ({
+          id: question.id,
+          content: question.content,
+          format: question.format,
+          correctAnswer: question.correctAnswer,
+          studentAnswer: answers[question.id] || '',
+          knowledgePointId: question.knowledgePointId,
+          knowledgePointName: question.knowledgePointName,
+        })),
+      })
+      const gradeMap = Object.fromEntries(graded.items.map((item) => [item.id, item]))
+      setSelfGrades(gradeMap)
+      setChecked(true)
+      applySimulation(
+        `${mode === 'preview' ? '预习' : '复习'}自测 · ${selectedBook?.shortTitle || subject}`,
+        result.selfCheck.map((question) => ({
+          question,
+          isCorrect: Boolean(gradeMap[question.id]?.correct),
+          userAnswer: answers[question.id] || '',
+          cause: gradeMap[question.id]?.errorCause,
+        })),
+      )
+      notify('success', '自测批改完成', '错误题已进入错题本，答案不会直接显示。')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '自测批改失败')
+    } finally {
+      setCheckingAnswers(false)
+    }
   }
 
   return (
@@ -258,9 +303,12 @@ export function StudyCyclePage() {
             <div className="cycle-panel"><h3>执行步骤</h3>{result.steps.map((item, index) => <article key={`${item.title}-${index}`}><span>{index + 1}</span><div><strong>{item.title}</strong><p>{item.content}</p><em><Clock3 size={14} /> {item.minutes} 分钟</em></div></article>)}</div>
           </div>
           <div className="cycle-self-check">
-            <div className="cycle-section-title"><div><h3>完成后自测</h3><p>先独立回答，再查看答案和解析。</p></div>{checked && <span><CheckCircle2 size={16} /> 已核对</span>}</div>
-            {result.selfCheck.map((question, index) => <article key={question.id || index}><strong>{index + 1}. {question.content}</strong>{question.options?.length ? <div className="simulation-options">{question.options.map((option) => <label key={option}><input type="radio" name={`cycle-${question.id}`} checked={answers[question.id] === option} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option }))} />{option}</label>)}</div> : <input value={answers[question.id] || ''} onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))} placeholder="写下你的答案" />}{checked && <div className="cycle-answer"><b>参考答案：{question.correctAnswer}</b><span>{question.explanation}</span></div>}</article>)}
-            <button className="family-secondary-button" onClick={() => setChecked(true)}>核对答案</button>
+            <div className="cycle-section-title"><div><h3>完成后自测</h3><p>先独立回答，系统批改后错误题进入错题本分步订正，不直接显示答案。</p></div>{checked && <span><CheckCircle2 size={16} /> 已核对</span>}</div>
+            {result.selfCheck.map((question, index) => {
+              const grade = selfGrades[question.id]
+              return <article key={question.id || index} className={checked ? (grade?.correct ? 'is-correct' : 'is-wrong') : ''}><strong>{index + 1}. {question.content}</strong>{question.options?.length ? <div className="simulation-options">{question.options.map((option) => <label key={option}><input type="radio" name={`cycle-${question.id}`} disabled={checked} checked={answers[question.id] === option} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option }))} />{option}</label>)}</div> : <input disabled={checked} value={answers[question.id] || ''} onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))} placeholder="写下你的答案" />}{checked && grade && <div className={`cycle-answer cycle-answer--adaptive ${grade.correct ? 'correct' : 'wrong'}`}><b>{grade.correct ? `回答正确 · ${grade.score} 分` : `需要订正 · ${grade.score} 分`}</b><span>{grade.feedback}</span>{!grade.correct && <button onClick={() => navigate('/mistakes')}>去错题本分步订正</button>}</div>}</article>
+            })}
+            <button className="family-secondary-button" disabled={checkingAnswers || checked} onClick={() => void checkSelfTest()}>{checkingAnswers ? <><LoaderCircle className="spin" size={16} />正在批改…</> : checked ? '已完成批改' : '提交批改（错误题不显示答案）'}</button>
           </div>
           <div className="cycle-next-action"><ChevronRight size={20} /><div><strong>下一步</strong><span>{result.nextAction}</span></div><button onClick={() => navigate('/simulation')}>去出题验证</button></div>
         </section>

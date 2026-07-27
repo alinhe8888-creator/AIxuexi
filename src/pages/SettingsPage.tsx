@@ -184,7 +184,7 @@ export function SettingsPage() {
             <div className="setting-row">
               <div>
                 <strong>错题自动保存</strong>
-                <span>答错后自动进入错题本</span>
+                <span>答错后立即进入错题本，不在训练页直接显示答案</span>
               </div>
               <button
                 className={`switch ${settings.autoAddMistakes ? 'on' : ''}`}
@@ -198,6 +198,57 @@ export function SettingsPage() {
                 <span />
               </button>
             </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>自适应多讲法</strong>
+                <span>不会时在启发、类比、图像、推导、步骤和反例之间自动切换</span>
+              </div>
+              <button
+                className={`switch ${settings.adaptiveExplanation !== false ? 'on' : ''}`}
+                onClick={() => setSettings({ ...settings, adaptiveExplanation: settings.adaptiveExplanation === false })}
+              >
+                <span />
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>严格订正闭环</strong>
+                <span>必须完成原题订正和迁移小测，才允许标记为已掌握</span>
+              </div>
+              <button
+                className={`switch ${settings.strictCorrectionMode !== false ? 'on' : ''}`}
+                onClick={() => setSettings({ ...settings, strictCorrectionMode: settings.strictCorrectionMode === false })}
+              >
+                <span />
+              </button>
+            </div>
+
+            <div className="setting-row">
+              <div>
+                <strong>保存有效讲法</strong>
+                <span>把真正帮助答对的讲解方式沉淀进学生画像，后续优先使用</span>
+              </div>
+              <button
+                className={`switch ${settings.saveEffectiveMethods !== false ? 'on' : ''}`}
+                onClick={() => setSettings({ ...settings, saveEffectiveMethods: settings.saveEffectiveMethods === false })}
+              >
+                <span />
+              </button>
+            </div>
+
+            <label className="answer-reveal-setting">
+              连续答错几次后允许显示答案
+              <select
+                value={settings.answerRevealAttempts || 2}
+                onChange={(event) => setSettings({ ...settings, answerRevealAttempts: Number(event.target.value) })}
+              >
+                <option value={2}>2 次（推荐）</option>
+                <option value={3}>3 次（更严格）</option>
+              </select>
+              <small>显示答案后仍需完成一道迁移题，避免“看懂了但不会做”。</small>
+            </label>
 
             <Button onClick={() => updateSettings(settings)}>
               <Settings size={17} />

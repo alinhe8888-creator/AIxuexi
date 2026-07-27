@@ -1,6 +1,6 @@
 # 私人家庭版接口
 
-所有学生接口均要求：
+学生接口要求：
 
 ```http
 Authorization: Bearer <student-token>
@@ -10,113 +10,85 @@ Authorization: Bearer <student-token>
 
 ## 教材 ZIP 与知识库
 
-### 检查配置
-
 ```http
-GET /api/materials/status
-```
-
-返回 R2、Qwen、ZIP 大小和支持文件类型。
-
-### 获取 R2 上传地址
-
-```http
-POST /api/materials/presign
-Content-Type: application/json
-
-{
-  "fileName": "高中数学.zip",
-  "size": 12345678,
-  "contentType": "application/zip"
-}
-```
-
-浏览器收到 `uploadUrl` 后直接 PUT 到 R2，避免大 ZIP 经过 Render。
-
-### 创建解析任务
-
-```http
-POST /api/materials/imports
-Content-Type: application/json
-
-{
-  "key": "users/.../materials/...zip",
-  "fileName": "高中数学.zip",
-  "subject": "数学",
-  "grade": "高二",
-  "textbookVersion": "人教版（A版）（人民教育出版社）"
-}
-```
-
-### 查询、重试和删除
-
-```http
+GET    /api/materials/status
+POST   /api/materials/presign
+POST   /api/materials/imports
 GET    /api/materials/imports
 GET    /api/materials/imports/:id
 POST   /api/materials/imports/:id/retry
 DELETE /api/materials/imports/:id
 DELETE /api/materials
+GET    /api/knowledge?subject=数学&grade=高二&keyword=函数
 ```
 
-### 查询真实知识库
+大 ZIP 通过预签名地址直接上传 R2，避免文件经过 Render；创建解析任务时应提交 `key`、`fileName`、`subject`、`grade`、`textbookVersion`、`bookId` 和可选章节信息。
 
-```http
-GET /api/knowledge?subject=数学&grade=高二&keyword=函数
-```
-
-旧演示资料会在 V3 第一次访问资料接口时清空。
-
-## Qwen 学习接口
-
-### 拍题深度识别
+## 图片与试卷理解
 
 ```http
 POST /api/ocr/question
-
-{
-  "subject": "数学",
-  "imageDataUrl": "data:image/jpeg;base64,..."
-}
-```
-
-图片先保存到家庭私有 R2，再由 Qwen 理解题干、公式、图表、章节与知识点。
-
-### 整卷分析
-
-```http
 POST /api/ocr/paper
-
-{
-  "subject": "数学",
-  "imageDataUrls": ["data:image/jpeg;base64,..."]
-}
 ```
 
-### 分步讲解
+图片先进入家庭私有 R2，再由视觉模型理解题干、公式、图表、章节和知识点。
+
+## 自适应讲解
+
+### 生成多种讲法
 
 ```http
 POST /api/ai/explain
+Content-Type: application/json
 
 {
   "subject": "数学",
   "content": "题目正文",
-  "correctAnswer": "可选参考答案"
+  "correctAnswer": "参考答案",
+  "studentAnswer": "学生第一次答案",
+  "preferredStyles": ["启发提问", "图像框架"]
 }
 ```
 
-### 针对性训练
+返回错因诊断、至少多种讲解方法、渐进提示、步骤、即时检测和答案开放次数。
+
+### 判断重新作答或迁移题
 
 ```http
-POST /api/ai/simulation
+POST /api/ai/check-answer
+Content-Type: application/json
 
 {
   "subject": "数学",
-  "points": [{ "id": "kp-1", "name": "函数单调性" }],
-  "count": 5
+  "content": "原题或迁移题",
+  "correctAnswer": "参考答案",
+  "studentAnswer": "学生答案",
+  "attemptNumber": 2,
+  "methodId": "method-1",
+  "methodName": "画图定位关系",
+  "methodStyle": "图像框架",
+  "revealAllowed": true,
+  "transfer": false
 }
 ```
 
-以上接口都会优先检索用户上传的教材知识。
+返回语义评分、错因、针对性提示和下一动作：`retry`、`switch_method`、`reveal` 或 `complete`。当 `revealAllowed=false` 时不得返回完整答案。
+
+### 批量批改模拟训练
+
+```http
+POST /api/ai/grade-simulation
+```
+
+批量返回每题正确性、得分、反馈和错因；错误题由前端自动进入错题本，不在提交页直接显示完整答案。
+
+### 生成训练
+
+```http
+POST /api/ai/simulation
+```
+
+支持专项小练、整套模拟卷和考前冲刺，并可带科目、书册、章节、知识点、题型、难度与题量。
 
 ## 学生数据分析
 
@@ -125,7 +97,7 @@ GET  /api/ai/student-analysis
 POST /api/ai/student-analysis
 ```
 
-生成学习总结、优先薄弱点、根因、今日任务、7 天计划和家庭查看建议。
+生成学习总结、优先薄弱点、根因、今日任务、阶段计划和家庭查看建议。
 
 ## 家庭自动关联
 
@@ -135,4 +107,4 @@ GET  /api/parent/children
 GET  /api/parent/children/:studentId/dashboard
 ```
 
-不再使用绑定码，也不允许解除固定关联。
+固定家庭模式不使用绑定码，也不提供公开注册和解除关联。

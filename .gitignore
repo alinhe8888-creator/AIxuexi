@@ -31,3 +31,10 @@ dist-student/
 dist-parent/
 backend/dist/
 .aixuexi-backups/
+
+# Local repair/test artifacts
+*.bak
+*.before-*
+.tmp-types/
+tsconfig.shim.json
+backend/tsconfig.shim.json

@@ -1,5 +1,8 @@
 import type {
   AiExplanation,
+  AnswerAssessment,
+  ErrorCause,
+  ExplanationStyle,
   KnowledgeItem,
   PaperQuestionAnalysis,
   QuizQuestion,
@@ -24,6 +27,35 @@ export interface AiExplainInput {
   subject: Subject
   content: string
   correctAnswer?: string
+  studentAnswer?: string
+  preferredStyles?: ExplanationStyle[]
+}
+export interface AnswerAssessmentInput {
+  subject: Subject
+  content: string
+  correctAnswer: string
+  studentAnswer: string
+  attemptNumber: number
+  methodId: string
+  methodName: string
+  methodStyle: ExplanationStyle
+  revealAllowed: boolean
+  transfer?: boolean
+}
+export interface SimulationGradeInput {
+  subject: Subject
+  questions: Array<{
+    id: string
+    content: string
+    format: QuestionFormat
+    correctAnswer: string
+    studentAnswer: string
+    knowledgePointId: string
+    knowledgePointName: string
+  }>
+}
+export interface SimulationGradeResult {
+  items: Array<{ id: string; correct: boolean; score: number; feedback: string; errorCause: ErrorCause }>
 }
 export interface PaperRecognitionInput {
   subject: Subject
@@ -108,6 +140,26 @@ export const learningApi = {
         method: 'POST',
         body: JSON.stringify(input),
         timeoutMs: 240_000,
+      })
+    },
+
+    async assessAnswer(input: AnswerAssessmentInput): Promise<AnswerAssessment> {
+      requireRealApi()
+      return apiRequest<AnswerAssessment>('/api/ai/check-answer', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 180_000,
+        retry: 1,
+      })
+    },
+
+    async gradeSimulation(input: SimulationGradeInput): Promise<SimulationGradeResult> {
+      requireRealApi()
+      return apiRequest<SimulationGradeResult>('/api/ai/grade-simulation', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 300_000,
+        retry: 1,
       })
     },
 

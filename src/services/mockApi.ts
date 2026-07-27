@@ -27,47 +27,101 @@ export async function mockOcrRecognize(subject: Subject, fileName?: string) {
 export async function mockAiExplain(subject: Subject, content: string, correctAnswer?: string): Promise<AiExplanation> {
   await delay(950)
   const template = subjectTemplates[subject]
-  const subjectSpecific: Partial<Record<Subject, AiExplanation>> = {
-    数学: {
-      knowledgePoints: ['导数的几何意义', '点斜式直线方程'],
-      thinking: '切线问题固定分为三步：求导数得到斜率、代入求切点、用点斜式写方程。先不要急着展开计算。',
-      steps: [
-        { title: '第一步：确定工具', content: '题目出现“某点处的切线”，说明需要用该点的导数值作为切线斜率。' },
-        { title: '第二步：求斜率', content: "对函数求导，再把给定的 x 值代入 f′(x)，得到 k。" },
-        { title: '第三步：求切点', content: '把给定 x 代入原函数 f(x)，得到切点坐标 (x₀, y₀)。' },
-        { title: '第四步：写切线', content: '使用 y-y₀=k(x-x₀)，最后整理为标准形式。' },
-      ],
-      finalAnswer: correctAnswer || template.answer,
-      commonMistakes: ['把 f(x₀) 当成斜率', '求导后忘记代入指定点', '使用点斜式时符号出错'],
-      lifeExample: '曲线像一条山路，导数表示站在某一点时脚下的即时坡度；切线就是那一小段路面的延伸。',
-      instantCheck: { question: '函数 g(x)=x²+2x 在 x=0 处的切线斜率是多少？', answer: '2', explanation: "g′(x)=2x+2，因此 g′(0)=2。" },
-    },    英语: {
-      knowledgePoints: ['非谓语动词', '逻辑主语与主被动关系'],
-      thinking: '先找到句子逻辑主语，再判断它与动作之间是主动还是被动，最后选择现在分词或过去分词。',
-      steps: [
-        { title: '第一步：找逻辑主语', content: '分词短语的逻辑主语通常与主句主语一致。' },
-        { title: '第二步：判断关系', content: '主语主动执行动作时用 doing；主语承受动作时用 done。' },
-        { title: '第三步：检查语义', content: '把答案放回句子，检查时间和逻辑是否通顺。' },
-      ],
-      finalAnswer: correctAnswer || template.answer,
-      commonMistakes: ['只根据中文意思选词', '忽略主语与动作的主动/被动关系', '把谓语动词和非谓语动词混淆'],
-      lifeExample: '“看到风景的人”用 seeing；“被别人看到的城市”用 seen。关键看谁执行动作。',
-      instantCheck: { question: '____ in 1911, the university has a long history. (found)', answer: 'Founded', explanation: 'university 与 found 是被动关系，使用过去分词 Founded。' },
+  const finalAnswer = correctAnswer || template.answer
+  const isMath = subject === '数学'
+  const isEnglish = subject === '英语'
+  const point = template.point
+  const commonSteps = isMath
+    ? [
+        { title: '定位条件', content: '把题目给出的量、关系和所求对象分别写出来。' },
+        { title: '选择工具', content: '判断最直接对应的定义、公式或图像关系。' },
+        { title: '分步推理', content: '每一步只完成一个变化，并写出依据。' },
+        { title: '回代检查', content: '检查符号、范围、单位和题目要求是否全部满足。' },
+      ]
+    : isEnglish
+      ? [
+          { title: '找句子主干', content: '先确定主语、谓语和关键修饰关系。' },
+          { title: '判断逻辑关系', content: '分析主动被动、时间先后和语法位置。' },
+          { title: '代回语境', content: '把候选形式放回句子，检查语义和结构。' },
+        ]
+      : [
+          { title: '识别设问', content: '圈出任务词、限定词和需要回答的层次。' },
+          { title: '提取材料', content: '只保留能支撑结论的关键词和事实。' },
+          { title: '组织答案', content: '按照结论、依据、说明的顺序完整表达。' },
+          { title: '检查覆盖', content: '确认没有漏答限定条件或分问。' },
+        ]
+  const methods = [
+    {
+      id: 'guided-questioning',
+      name: '启发提问法',
+      style: '启发提问' as const,
+      bestFor: '知道部分条件，但不知道第一步怎么开始',
+      openingQuestion: `这道题关于“${point}”，题目最先要求你判断或求出什么？`,
+      hints: ['圈出已知条件和所求对象', '写出与所求对象最直接相关的概念或公式', '把大问题拆成一个可以立即完成的小步骤'],
+      steps: commonSteps,
+      checkpointQuestion: `请用一句话说出解决“${point}”题的第一步。`,
+      checkpointAnswer: '先识别题目条件和设问，再选择直接对应的知识工具。',
+      checkpointExplanation: '能说出第一步和依据，说明已经建立了解题入口。',
+      memoryTip: '先问“题目要什么”，再问“哪个条件能直接帮助我”。',
     },
-  }
-  return subjectSpecific[subject] ?? {
-    knowledgePoints: [template.point],
-    thinking: '先识别题型和设问，再提取已知条件，按知识点组织答案，最后检查是否回应了全部问题。',
-    steps: [
-      { title: '识别设问', content: `本题考查“${template.point}”，先圈出题目中的限定词和任务词。` },
-      { title: '提取条件', content: `从题目中整理与“${content.slice(0, 18)}…”有关的关键信息。` },
-      { title: '组织答案', content: '按“结论—依据—说明”的顺序作答，避免只写结论。' },
-      { title: '检查', content: '检查是否漏答、术语是否准确、表达是否完整。' },
-    ],
-    finalAnswer: correctAnswer || template.answer,
-    commonMistakes: ['没有回应设问中的限定条件', '只写结论不写依据', '知识术语表达不准确'],
-    lifeExample: '像向同学解释一件事：先说结论，再说明为什么，最后用题目条件证明。',
-    instantCheck: { question: `请用一句话概括“${template.point}”的核心判断方法。`, answer: '围绕设问，使用对应知识点和材料条件形成完整结论。', explanation: '能说清判断依据，才说明真正掌握。' },
+    {
+      id: 'analogy-visual',
+      name: '生活类比与图像法',
+      style: '生活类比' as const,
+      bestFor: '抽象概念记得住，但无法形成直观理解',
+      openingQuestion: '把这个概念放进一个生活场景，它更像“方向”“规则”还是“因果链”？',
+      hints: ['先画一个最简单的关系图', '用箭头标出条件如何影响结果', '再把图中的每一步换回学科术语'],
+      steps: [
+        { title: '建立类比', content: `把“${point}”想成一个由条件推动结果的过程。` },
+        { title: '画出关系', content: '用框和箭头表示已知、变化和结论之间的联系。' },
+        { title: '回到题目', content: '把图上的关系逐一换回题目中的量或材料。' },
+        { title: '形成答案', content: '按照图中的顺序完成推理或表达。' },
+      ],
+      checkpointQuestion: '请画出或口述这道题的“条件 → 方法 → 结论”关系。',
+      checkpointAnswer: '先列条件，再连接到对应方法，最后得到结论。',
+      checkpointExplanation: '关系链完整，才说明不是只记住最终答案。',
+      memoryTip: '抽象题先变成图，图看懂后再变回公式或文字。',
+    },
+    {
+      id: 'counterexample-steps',
+      name: '反例辨析与步骤法',
+      style: '反例辨析' as const,
+      bestFor: '容易混淆相近概念或反复犯同一种错误',
+      openingQuestion: '哪一种看似合理的做法其实会违反题目条件？',
+      hints: ['列出一个常见错误做法', '指出它具体违反了哪个条件', '再写出正确步骤与错误步骤的差别'],
+      steps: [
+        { title: '暴露错误路径', content: '先写出最容易误用的概念、公式或材料。' },
+        { title: '找到冲突', content: '用题目中的限定条件说明这条路径为什么不成立。' },
+        { title: '替换方法', content: '选择能够同时满足全部条件的正确路径。' },
+        { title: '对照检查', content: '把正确与错误步骤并排比较，记住分界点。' },
+      ],
+      checkpointQuestion: '本题最容易犯的错误是什么？你如何用题目条件排除它？',
+      checkpointAnswer: '指出错误方法及其违反的具体条件。',
+      checkpointExplanation: '能排除错误路径，说明概念边界已经更清楚。',
+      memoryTip: '不仅记“怎么做”，还要记“为什么不能那样做”。',
+    },
+  ]
+  return {
+    knowledgePoints: [point],
+    diagnosis: {
+      likelyCause: '解题思路错误',
+      confidence: 0.78,
+      evidence: `根据题目“${content.slice(0, 36)}”和学生作答，优先检查第一步定位与条件使用。`,
+      firstQuestion: methods[0].openingQuestion,
+    },
+    recommendedMethodId: methods[0].id,
+    methods,
+    answerRevealAfterAttempts: 2,
+    thinking: methods[0].openingQuestion,
+    steps: commonSteps,
+    finalAnswer,
+    commonMistakes: ['跳过审题直接套模板', '只写结果没有依据', '忽略限定条件或检查步骤'],
+    lifeExample: '像规划一条路线：先确认终点，再看手里有哪些路标，最后逐段检查有没有走偏。',
+    instantCheck: {
+      question: `请用同样方法完成一道关于“${point}”的简短迁移题，并写出第一步依据。`,
+      answer: '答案应包含正确结论以及对应的第一步依据。',
+      explanation: '迁移题用于验证是否真正掌握方法，而不是记住原题结果。',
+    },
   }
 }
 

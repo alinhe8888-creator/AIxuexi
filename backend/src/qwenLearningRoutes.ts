@@ -63,6 +63,32 @@ const explainSchema = z.object({
   subject: subjectSchema,
   content: z.string().min(1).max(40_000),
   correctAnswer: z.string().optional(),
+  studentAnswer: z.string().max(20_000).optional(),
+  preferredStyles: z.array(z.string().max(40)).max(6).default([]),
+})
+const checkAnswerSchema = z.object({
+  subject: subjectSchema,
+  content: z.string().min(1).max(40_000),
+  correctAnswer: z.string().min(1).max(20_000),
+  studentAnswer: z.string().min(1).max(20_000),
+  attemptNumber: z.number().int().min(1).max(6),
+  methodId: z.string().max(120).default(''),
+  methodName: z.string().max(120).default(''),
+  methodStyle: z.string().max(40).default('步骤拆解'),
+  revealAllowed: z.boolean().default(false),
+  transfer: z.boolean().default(false),
+})
+const gradeSimulationSchema = z.object({
+  subject: subjectSchema,
+  questions: z.array(z.object({
+    id: z.string().min(1).max(200),
+    content: z.string().min(1).max(20_000),
+    format: z.string().max(40),
+    correctAnswer: z.string().min(1).max(20_000),
+    studentAnswer: z.string().max(20_000).default(''),
+    knowledgePointId: z.string().max(200).default(''),
+    knowledgePointName: z.string().max(240).default(''),
+  })).min(1).max(30),
 })
 const questionFormatSchema = z.enum(['选择题', '填空题', '判断题', '解答题', '默写题'])
 const simulationSchema = z.object({
@@ -102,6 +128,85 @@ function extractJson(text: string): unknown {
     .filter((index) => index >= 0)
   if (!indexes.length) throw new Error('Qwen 未返回 JSON')
   return JSON.parse(cleaned.slice(Math.min(...indexes))) as unknown
+}
+
+const errorCauses = ['知识点不会', '概念理解错误', '公式记忆错误', '审题错误', '计算错误', '解题思路错误', '步骤遗漏', '粗心', '时间不足'] as const
+const explanationStyles = ['启发提问', '生活类比', '图像框架', '公式推导', '步骤拆解', '反例辨析'] as const
+
+function asStringArray(value: unknown, max = 8) {
+  return Array.isArray(value) ? value.map(String).filter(Boolean).slice(0, max) : []
+}
+
+function normalizeExplanationResult(raw: unknown, fallbackAnswer: string) {
+  const result = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const legacySteps = Array.isArray(result.steps) ? result.steps as Array<Record<string, unknown>> : []
+  const rawMethods = Array.isArray(result.methods) ? result.methods as Array<Record<string, unknown>> : []
+  const methods = rawMethods.slice(0, 4).map((method, index) => {
+    const fallbackStyle = explanationStyles[index % explanationStyles.length] ?? '步骤拆解'
+    const styleCandidate = String(method.style || fallbackStyle)
+    const style = (explanationStyles as readonly string[]).includes(styleCandidate) ? styleCandidate : fallbackStyle
+    const steps = Array.isArray(method.steps)
+      ? (method.steps as Array<Record<string, unknown>>).slice(0, 6).map((step, stepIndex) => ({
+        title: String(step.title || `第 ${stepIndex + 1} 步`),
+        content: String(step.content || ''),
+      }))
+      : legacySteps.slice(0, 6).map((step, stepIndex) => ({ title: String(step.title || `第 ${stepIndex + 1} 步`), content: String(step.content || '') }))
+    return {
+      id: String(method.id || `method-${index + 1}`),
+      name: String(method.name || `${style}讲法`),
+      style,
+      bestFor: String(method.bestFor || '适合当前知识点的另一种理解路径'),
+      openingQuestion: String(method.openingQuestion || result.thinking || '先说说你卡在哪一步。'),
+      hints: asStringArray(method.hints, 5),
+      steps,
+      checkpointQuestion: String(method.checkpointQuestion || (result.instantCheck as Record<string, unknown> | undefined)?.question || '请用自己的话复述关键步骤。'),
+      checkpointAnswer: String(method.checkpointAnswer || (result.instantCheck as Record<string, unknown> | undefined)?.answer || fallbackAnswer),
+      checkpointExplanation: String(method.checkpointExplanation || (result.instantCheck as Record<string, unknown> | undefined)?.explanation || ''),
+      memoryTip: String(method.memoryTip || '先判断条件，再选择方法，最后回看题目要求。'),
+    }
+  })
+  if (!methods.length) {
+    methods.push({
+      id: 'method-guided',
+      name: '启发式分步讲法',
+      style: '启发提问',
+      bestFor: '先找到卡点，再逐步补齐思路',
+      openingQuestion: String(result.thinking || '题目最先要求你判断什么？'),
+      hints: ['圈出已知条件和问题', '写出最直接相关的概念或公式'],
+      steps: legacySteps.slice(0, 6).map((step, index) => ({ title: String(step.title || `第 ${index + 1} 步`), content: String(step.content || '') })),
+      checkpointQuestion: String((result.instantCheck as Record<string, unknown> | undefined)?.question || '请用自己的话复述解题关键。'),
+      checkpointAnswer: String((result.instantCheck as Record<string, unknown> | undefined)?.answer || fallbackAnswer),
+      checkpointExplanation: String((result.instantCheck as Record<string, unknown> | undefined)?.explanation || ''),
+      memoryTip: '先审题，再定位知识点，再列步骤，最后检查。',
+    })
+  }
+  const diagnosisRaw = (result.diagnosis && typeof result.diagnosis === 'object' ? result.diagnosis : {}) as Record<string, unknown>
+  const causeCandidate = String(diagnosisRaw.likelyCause || '知识点不会')
+  const likelyCause = (errorCauses as readonly string[]).includes(causeCandidate) ? causeCandidate : '知识点不会'
+  const instantRaw = (result.instantCheck && typeof result.instantCheck === 'object' ? result.instantCheck : {}) as Record<string, unknown>
+  const recommended = String(result.recommendedMethodId || methods[0]?.id || '')
+  return {
+    knowledgePoints: asStringArray(result.knowledgePoints, 8),
+    diagnosis: {
+      likelyCause,
+      confidence: Math.max(0, Math.min(1, Number(diagnosisRaw.confidence || 0.7))),
+      evidence: String(diagnosisRaw.evidence || '根据题目、原答案和知识点进行初步判断。'),
+      firstQuestion: String(diagnosisRaw.firstQuestion || methods[0]?.openingQuestion || '你认为这道题第一步应该做什么？'),
+    },
+    recommendedMethodId: methods.some((method) => method.id === recommended) ? recommended : (methods[0]?.id || ''),
+    methods,
+    answerRevealAfterAttempts: 2,
+    thinking: String(result.thinking || methods[0]?.openingQuestion || ''),
+    steps: legacySteps.slice(0, 8).map((step, index) => ({ title: String(step.title || `第 ${index + 1} 步`), content: String(step.content || '') })),
+    finalAnswer: String(result.finalAnswer || fallbackAnswer),
+    commonMistakes: asStringArray(result.commonMistakes, 8),
+    lifeExample: String(result.lifeExample || ''),
+    instantCheck: {
+      question: String(instantRaw.question || methods[0]?.checkpointQuestion || '请完成一道迁移题。'),
+      answer: String(instantRaw.answer || methods[0]?.checkpointAnswer || fallbackAnswer),
+      explanation: String(instantRaw.explanation || methods[0]?.checkpointExplanation || ''),
+    },
+  }
 }
 
 async function aiJson(input: {
@@ -322,19 +427,32 @@ router.post('/ai/explain', ...studentOnly, asyncRoute(async (req, res) => {
   const context = await knowledgeContext(
     req.user!.id,
     input.subject,
-    [input.content.slice(0, 80)],
+    [input.content.slice(0, 120)],
   )
-  const result = await aiJson({
+  const raw = await aiJson({
     provider: 'text',
+    maxTokens: 14_000,
     messages: [
       {
         role: 'system',
         content: [
-          '你是家庭高中 AI 家教。',
+          '你是家庭高中 AI 订正教练，不是答案展示器。',
           curriculumPrompt,
           '优先引用用户上传教材知识，不得脱离固定教材版本。',
-          '先判断学生可能卡住的原因，再用生活化例子和分步提示讲解。',
-          '只返回 JSON：knowledgePoints:string[]、thinking:string、steps:{title,content}[]、finalAnswer:string、commonMistakes:string[]、lifeExample:string、instantCheck:{question,answer,explanation}。',
+          '核心规则：学生答错后先诊断卡点，至少提供 3 种彼此不同的讲法；前两次作答都不能直接给最终答案。',
+          '讲法必须根据学科和题目灵活变化，可从启发提问、生活类比、图像框架、公式推导、步骤拆解、反例辨析中选择。',
+          '每种讲法都要有开场问题、渐进提示、分步过程、检查问题和记忆提示。',
+          '只返回 JSON 对象，字段：',
+          'knowledgePoints:string[]；',
+          'diagnosis:{likelyCause,confidence,evidence,firstQuestion}；',
+          'recommendedMethodId:string；',
+          'methods:{id,name,style,bestFor,openingQuestion,hints:string[],steps:{title,content}[],checkpointQuestion,checkpointAnswer,checkpointExplanation,memoryTip}[]；',
+          'answerRevealAfterAttempts:2；',
+          'thinking:string；steps:{title,content}[]；finalAnswer:string；commonMistakes:string[]；lifeExample:string；',
+          'instantCheck:{question,answer,explanation}。',
+          'likelyCause 只能为：知识点不会、概念理解错误、公式记忆错误、审题错误、计算错误、解题思路错误、步骤遗漏、粗心、时间不足。',
+          'style 只能为：启发提问、生活类比、图像框架、公式推导、步骤拆解、反例辨析。',
+          '不要在 openingQuestion、hints、thinking 或 methods.steps 中泄露最终答案；steps 只讲判断路径和关键操作，最后数值或结论只放 finalAnswer。',
           '',
           '可用教材知识：',
           context,
@@ -346,12 +464,113 @@ router.post('/ai/explain', ...studentOnly, asyncRoute(async (req, res) => {
           `科目：${input.subject}`,
           `教材：${fixedTextbookVersions[input.subject]}`,
           `题目：${input.content}`,
-          `参考答案：${input.correctAnswer || '请自行判断'}`,
+          `学生原答案：${input.studentAnswer || '未填写'}`,
+          `内部参考答案：${input.correctAnswer || '请自行判断'}`,
+          `学生历史偏好讲法：${input.preferredStyles.join('、') || '暂无，需多样化尝试'}`,
         ].join('\n'),
       },
     ],
   })
-  res.json(result)
+  res.json(normalizeExplanationResult(raw, input.correctAnswer || ''))
+}))
+
+router.post('/ai/check-answer', ...studentOnly, asyncRoute(async (req, res) => {
+  const input = checkAnswerSchema.parse(req.body)
+  const context = await knowledgeContext(req.user!.id, input.subject, [input.content.slice(0, 120)])
+  const raw = await aiJson({
+    provider: 'text',
+    maxTokens: 3_500,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          '你是高中订正流程的答案评估器。',
+          curriculumPrompt,
+          '需要按语义和关键步骤判断，不能只做字符串匹配。',
+          input.transfer ? '当前是迁移检测：判断学生是否真正会用方法解决新题。' : '当前是原题订正：判断学生是否修正了原先错误。',
+          input.revealAllowed
+            ? '如果仍错误，可以在 revealAnswer 字段给出最终答案；同时指出关键误区。'
+            : '严禁泄露最终答案、完整算式或能直接推出答案的句子；只能给针对性提示，并建议重试或换一种讲法。',
+          '只返回 JSON：correct:boolean,score:0-100,feedback:string,misconception:string,errorCause:string,nextAction:string,targetedHint:string,suggestedMethodId?:string,revealAnswer?:string。',
+          'nextAction 只能为 retry、switch_method、reveal、complete。',
+          'errorCause 只能为：知识点不会、概念理解错误、公式记忆错误、审题错误、计算错误、解题思路错误、步骤遗漏、粗心、时间不足。',
+          '',
+          '可用教材知识：',
+          context,
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: [
+          `科目：${input.subject}`,
+          `题目：${input.content}`,
+          `内部参考答案：${input.correctAnswer}`,
+          `学生答案：${input.studentAnswer}`,
+          `第几次作答：${input.attemptNumber}`,
+          `当前讲法：${input.methodName || input.methodId || '未指定'}（${input.methodStyle}）`,
+          `是否允许揭示答案：${input.revealAllowed ? '允许' : '不允许'}`,
+        ].join('\n'),
+      },
+    ],
+  }) as Record<string, unknown>
+
+  const causeCandidate = String(raw.errorCause || '知识点不会')
+  const errorCause = (errorCauses as readonly string[]).includes(causeCandidate) ? causeCandidate : '知识点不会'
+  const correct = Boolean(raw.correct)
+  let nextAction = String(raw.nextAction || (correct ? 'complete' : input.revealAllowed ? 'reveal' : input.attemptNumber === 1 ? 'switch_method' : 'retry'))
+  if (!['retry', 'switch_method', 'reveal', 'complete'].includes(nextAction)) nextAction = correct ? 'complete' : input.revealAllowed ? 'reveal' : 'retry'
+  if (!input.revealAllowed && nextAction === 'reveal') nextAction = input.attemptNumber === 1 ? 'switch_method' : 'retry'
+  const response: Record<string, unknown> = {
+    correct,
+    score: Math.max(0, Math.min(100, Number(raw.score || (correct ? 100 : 0)))),
+    feedback: String(raw.feedback || (correct ? '思路正确，继续做迁移检测。' : '还没有完全解决关键卡点。')),
+    misconception: String(raw.misconception || ''),
+    errorCause,
+    nextAction,
+    targetedHint: String(raw.targetedHint || (correct ? '请继续完成一道新题验证。' : '重新检查题目条件与所用概念是否对应。')),
+    suggestedMethodId: raw.suggestedMethodId ? String(raw.suggestedMethodId) : undefined,
+  }
+  if (input.revealAllowed && !correct) response.revealAnswer = String(raw.revealAnswer || input.correctAnswer)
+  res.json(response)
+}))
+
+router.post('/ai/grade-simulation', ...studentOnly, asyncRoute(async (req, res) => {
+  const input = gradeSimulationSchema.parse(req.body)
+  const raw = await aiJson({
+    provider: 'text',
+    maxTokens: Math.max(4_000, Math.min(14_000, input.questions.length * 520)),
+    messages: [
+      {
+        role: 'system',
+        content: [
+          '你是高中训练批改器。',
+          curriculumPrompt,
+          '按语义、关键步骤和题型批改，选择题/判断题严格，解答题可按关键步骤给分。',
+          '不要返回正确答案和完整解析，避免学生提交后立刻看到答案。',
+          '只返回 JSON：{"items":[...]}。',
+          '每项字段：id,correct:boolean,score:0-100,feedback:string,errorCause:string。',
+          'errorCause 只能为：知识点不会、概念理解错误、公式记忆错误、审题错误、计算错误、解题思路错误、步骤遗漏、粗心、时间不足。',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({ subject: input.subject, questions: input.questions }),
+      },
+    ],
+  }) as { items?: Array<Record<string, unknown>> }
+  const byId = new Map((raw.items || []).map((item) => [String(item.id || ''), item]))
+  const items = input.questions.map((question) => {
+    const item = byId.get(question.id) || {}
+    const causeCandidate = String(item.errorCause || '知识点不会')
+    return {
+      id: question.id,
+      correct: Boolean(item.correct),
+      score: Math.max(0, Math.min(100, Number(item.score || 0))),
+      feedback: String(item.feedback || (question.studentAnswer ? '需要进入错题订正流程。' : '未作答。')),
+      errorCause: (errorCauses as readonly string[]).includes(causeCandidate) ? causeCandidate : '知识点不会',
+    }
+  })
+  res.json({ items })
 }))
 
 router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {

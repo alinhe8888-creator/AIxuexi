@@ -10,6 +10,8 @@ const requiredFiles = [
   'src/pages/StudyCyclePage.tsx',
   'src/pages/SimulationPage.tsx',
   'src/components/Charts.tsx',
+  'src/components/AdaptiveCorrectionPanel.tsx',
+  'src/styles/adaptive-tutor.css',
   'src/pages/parent/ParentHomePage.tsx',
   'src/pages/parent/ParentProgressPage.tsx',
   'src/pages/parent/ParentReportsPage.tsx',
@@ -66,6 +68,8 @@ for (const route of [
   '/ocr/question',
   '/ocr/paper',
   '/ai/explain',
+  '/ai/check-answer',
+  '/ai/grade-simulation',
   '/ai/simulation',
   '/ai/study-cycle',
 ]) {
@@ -84,6 +88,17 @@ for (const chart of ['DonutBreakdown', 'GroupedBarChart', 'RadarChart', 'Activit
   if (!charts.includes(`export function ${chart}`)) throw new Error(`家长图表组件缺失：${chart}`)
 }
 
+const adaptive = fs.readFileSync('src/components/AdaptiveCorrectionPanel.tsx', 'utf8')
+const quizRunner = fs.readFileSync('src/components/QuizRunner.tsx', 'utf8')
+const mistakes = fs.readFileSync('src/pages/MistakeBookPage.tsx', 'utf8')
+for (const marker of ['answerRevealAttempts', 'switchMethod', 'checkTransfer', 'completeCorrection']) {
+  if (!adaptive.includes(marker)) throw new Error(`自适应订正能力缺失：${marker}`)
+}
+if (quizRunner.includes('正确答案：${current.correctAnswer}')) throw new Error('日常训练仍会在答错后直接显示答案')
+for (const marker of ['AdaptiveCorrectionPanel', 'finalAnswerRevealed', 'strategyPreferences']) {
+  if (!mistakes.includes(marker)) throw new Error(`错题闭环能力缺失：${marker}`)
+}
+
 for (const output of ['dist-student', 'dist-parent']) {
   const assetsDir = `${output}/assets`
   if (!fs.existsSync(assetsDir)) throw new Error(`${output} 没有 assets 目录`)
@@ -91,4 +106,4 @@ for (const output of ['dist-student', 'dist-parent']) {
   if (!assets.length) throw new Error(`${output} 没有 JS 构建产物`)
 }
 
-console.log('✅ 双端路由、教材知识库、预习复习、三种训练、家长图表和构建产物检查通过')
+console.log('✅ 双端路由、教材知识库、预习复习、三种训练、答案保护、自适应订正、方法画像、家长图表和构建产物检查通过')

@@ -277,7 +277,7 @@ export async function buildKnowledgeFromText(
     sourceType?: 'user_upload' | 'open_resource'
   },
 ) {
-  const cleanText = text.replace(/\u0000/g, '').trim()
+  const cleanText = text.replaceAll(String.fromCharCode(0), '').trim()
   if (cleanText.length < 20) return []
 
   const chunks: string[] = []

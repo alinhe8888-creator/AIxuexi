@@ -2,9 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createSeedState } from '../data/seed'
 import { AppStoreContext, type AppStoreValue, type ToastMessage } from './AppStoreContext'
 import type {
+  AiExplanation,
   AppSettings,
   AppState,
   KnowledgePoint,
+  LearningStrategyPreference,
+  MistakeRecord,
   PaperRecord,
   StudentProfile,
 } from '../types'
@@ -16,13 +19,89 @@ import { clamp, getMasteryLevel, getRiskLevel, ratingMasteryDelta, reviewInterva
 const STORAGE_KEY_PREFIX = 'aixuexi:private-family:v3'
 const storageKey = (userId?: string) => `${STORAGE_KEY_PREFIX}:${userId || 'anonymous'}`
 
+const normalizeExplanation = (explanation?: Partial<AiExplanation>): AiExplanation | undefined => {
+  if (!explanation) return undefined
+  if (Array.isArray(explanation.methods) && explanation.methods.length && explanation.diagnosis) {
+    return {
+      ...explanation,
+      answerRevealAfterAttempts: Math.max(2, explanation.answerRevealAfterAttempts || 2),
+    } as AiExplanation
+  }
+  const steps = Array.isArray(explanation.steps) ? explanation.steps : []
+  const finalAnswer = explanation.finalAnswer || ''
+  return {
+    knowledgePoints: Array.isArray(explanation.knowledgePoints) ? explanation.knowledgePoints : [],
+    diagnosis: {
+      likelyCause: '知识点不会',
+      confidence: 0.45,
+      evidence: '这是旧版讲解记录，需要通过新的订正作答继续确认卡点。',
+      firstQuestion: explanation.thinking || '你认为这道题最先应该判断什么？',
+    },
+    recommendedMethodId: 'legacy-guided',
+    methods: [{
+      id: 'legacy-guided',
+      name: '分步启发讲法',
+      style: '步骤拆解',
+      bestFor: '把旧讲解转入新的两轮订正流程',
+      openingQuestion: explanation.thinking || '先说说你卡在哪一步。',
+      hints: ['圈出已知条件和所求对象', '写出最直接相关的概念或公式'],
+      steps,
+      checkpointQuestion: explanation.instantCheck?.question || '请用自己的话复述关键步骤。',
+      checkpointAnswer: explanation.instantCheck?.answer || finalAnswer,
+      checkpointExplanation: explanation.instantCheck?.explanation || '',
+      memoryTip: '先审题，再定位知识点，再分步作答，最后检查。',
+    }],
+    answerRevealAfterAttempts: 2,
+    thinking: explanation.thinking || '',
+    steps,
+    finalAnswer,
+    commonMistakes: Array.isArray(explanation.commonMistakes) ? explanation.commonMistakes : [],
+    lifeExample: explanation.lifeExample || '',
+    instantCheck: explanation.instantCheck || {
+      question: '请完成一道同类迁移题。',
+      answer: finalAnswer,
+      explanation: '用于确认是否真正掌握方法。',
+    },
+  }
+}
+
+const normalizeState = (candidate?: Partial<AppState> | null): AppState => {
+  const seed = createSeedState()
+  if (!candidate?.profile || !Array.isArray(candidate.mistakes)) return seed
+  return {
+    ...seed,
+    ...candidate,
+    version: 5,
+    profile: { ...seed.profile, ...candidate.profile },
+    questions: Array.isArray(candidate.questions) ? candidate.questions.map((question) => ({ ...question, explanation: normalizeExplanation(question.explanation) })) : [],
+    mistakes: candidate.mistakes.map((mistake) => ({
+      ...mistake,
+      correction: mistake.correction ?? {
+        status: '待订正',
+        triedMethodIds: [],
+        attempts: [],
+        finalAnswerRevealed: false,
+        transferPassed: false,
+      },
+    })),
+    papers: Array.isArray(candidate.papers) ? candidate.papers : [],
+    knowledgePoints: Array.isArray(candidate.knowledgePoints) ? candidate.knowledgePoints : [],
+    reviewTasks: Array.isArray(candidate.reviewTasks) ? candidate.reviewTasks : [],
+    dailyPlans: Array.isArray(candidate.dailyPlans) ? candidate.dailyPlans : [],
+    quizzes: Array.isArray(candidate.quizzes) ? candidate.quizzes : [],
+    cards: Array.isArray(candidate.cards) ? candidate.cards : [],
+    knowledgeItems: Array.isArray(candidate.knowledgeItems) ? candidate.knowledgeItems : [],
+    activityLogs: Array.isArray(candidate.activityLogs) ? candidate.activityLogs : [],
+    strategyPreferences: Array.isArray(candidate.strategyPreferences) ? candidate.strategyPreferences : [],
+    settings: { ...seed.settings, ...(candidate.settings || {}), dataVersion: 5 },
+  }
+}
+
 const loadState = (userId?: string): AppState => {
   try {
     const raw = localStorage.getItem(storageKey(userId))
     if (!raw) return createSeedState()
-    const parsed = JSON.parse(raw) as AppState
-    if (!parsed.version || !parsed.profile || !Array.isArray(parsed.mistakes)) return createSeedState()
-    return parsed
+    return normalizeState(JSON.parse(raw) as Partial<AppState>)
   } catch {
     return createSeedState()
   }
@@ -135,7 +214,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     studentApi.getSnapshot()
       .then(({ snapshot }) => {
         if (cancelled) return
-        if (snapshot?.profile && Array.isArray(snapshot.mistakes)) setState(snapshot)
+        if (snapshot?.profile && Array.isArray(snapshot.mistakes)) setState(normalizeState(snapshot))
         else void studentApi.pushSnapshot(stateRef.current)
         setCloudReady(true)
       })
@@ -177,25 +256,52 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const saveMistake: AppStoreValue['saveMistake'] = ({ question, studentAnswer, primaryCause, secondaryCause, note }) => {
-    const mistakeId = crypto.randomUUID()
     const now = new Date().toISOString()
+    const existingBefore = stateRef.current.mistakes.find((item) => (
+      item.questionId === question.id
+      || (
+        !item.archived
+        && item.subject === question.subject
+        && item.knowledgePointId === question.knowledgePointId
+        && item.originalQuestion.trim() === question.content.trim()
+      )
+    ))
+    const actualId = existingBefore?.id ?? crypto.randomUUID()
+
     setState((current) => {
-      const existing = current.mistakes.find((item) => item.questionId === question.id && !item.archived)
-      const questions = current.questions.some((item) => item.id === question.id) ? current.questions : [question, ...current.questions]
-      const mastery = existing ? clamp(existing.mastery - 8) : 35
-      const mistake = existing ? {
+      const existing = current.mistakes.find((item) => item.id === actualId)
+      const questions = current.questions.some((item) => item.id === question.id)
+        ? current.questions.map((item) => item.id === question.id ? { ...item, ...question } : item)
+        : [question, ...current.questions]
+      const sameSubmission = Boolean(existing && existing.questionId === question.id && !(existing.correction?.attempts.length))
+      const mastery = existing ? clamp(existing.mastery - (sameSubmission ? 0 : 5)) : 35
+      const correction = existing?.correction ?? {
+        status: '待订正' as const,
+        triedMethodIds: [],
+        attempts: [],
+        finalAnswerRevealed: false,
+        transferPassed: false,
+      }
+      const mistake: MistakeRecord = existing ? {
         ...existing,
+        questionId: question.id,
         studentAnswer,
+        correctAnswer: question.correctAnswer || existing.correctAnswer,
         primaryCause,
         secondaryCause,
         note,
         wrongAt: now,
-        wrongCount: existing.wrongCount + 1,
+        wrongCount: existing.wrongCount + (sameSubmission ? 0 : 1),
         mastery,
         masteryLevel: getMasteryLevel(mastery),
         nextReviewAt: addDays(now, 1),
+        correction: {
+          ...correction,
+          status: correction.status === '已验证' ? '待订正' : correction.status,
+          transferPassed: correction.status === '已验证' ? false : correction.transferPassed,
+        },
       } : {
-        id: mistakeId,
+        id: actualId,
         questionId: question.id,
         subject: question.subject,
         chapter: question.chapter,
@@ -203,6 +309,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         knowledgePointName: question.knowledgePointName,
         originalQuestion: question.content,
         imageDataUrl: question.imageDataUrl,
+        imageKey: question.imageKey,
         studentAnswer,
         correctAnswer: question.correctAnswer,
         wrongAt: now,
@@ -214,21 +321,150 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         nextReviewAt: addDays(now, 1),
         note,
         sourceType: question.sourceType,
+        correction,
       }
-      const mistakes = existing ? current.mistakes.map((item) => item.id === existing.id ? mistake : item) : [mistake, ...current.mistakes]
-      const actualId = existing?.id ?? mistakeId
+      const mistakes = existing
+        ? current.mistakes.map((item) => item.id === actualId ? mistake : item)
+        : [mistake, ...current.mistakes]
       const reviewExists = current.reviewTasks.some((task) => task.sourceId === actualId && task.status === 'pending')
       return {
         ...current,
         questions,
         mistakes,
         knowledgePoints: updateKnowledge(current.knowledgePoints, { id: question.knowledgePointId, name: question.knowledgePointName, subject: question.subject, chapter: question.chapter, correct: false, cause: primaryCause }),
-        reviewTasks: reviewExists ? current.reviewTasks : [{ id: crypto.randomUUID(), sourceId: actualId, sourceKind: 'mistake', subject: question.subject, title: `复习：${question.knowledgePointName}`, knowledgePointId: question.knowledgePointId, scheduledDate: toDateKey(addDays(now, 1)), status: 'pending', priority: 3, createdAt: now }, ...current.reviewTasks],
-        activityLogs: [makeLog('mistake', `新增${question.subject}错题`, `${question.knowledgePointName}已进入复习计划`), ...current.activityLogs].slice(0, 60),
+        reviewTasks: reviewExists ? current.reviewTasks : [{ id: crypto.randomUUID(), sourceId: actualId, sourceKind: 'mistake', subject: question.subject, title: `订正：${question.knowledgePointName}`, knowledgePointId: question.knowledgePointId, scheduledDate: toDateKey(now), status: 'pending', priority: 3, createdAt: now }, ...current.reviewTasks],
+        activityLogs: [makeLog('mistake', `新增${question.subject}错题`, `${question.knowledgePointName}已进入两轮订正流程`), ...current.activityLogs].slice(0, 60),
       }
     })
-    notify('success', '已保存到错题本', '知识点画像和复习计划已同步更新。')
-    return mistakeId
+    notify('success', '已先放入错题本', '不会直接显示答案；完成两轮订正和迁移检测后再更新掌握度。')
+    return actualId
+  }
+
+  const updateMistakeDetails: AppStoreValue['updateMistakeDetails'] = (id, patch) => {
+    setState((current) => ({
+      ...current,
+      mistakes: current.mistakes.map((item) => item.id === id ? { ...item, ...patch } : item),
+    }))
+  }
+
+  const setCorrectionMethod: AppStoreValue['setCorrectionMethod'] = (id, methodId) => {
+    const now = new Date().toISOString()
+    setState((current) => ({
+      ...current,
+      mistakes: current.mistakes.map((item) => item.id === id ? {
+        ...item,
+        correction: {
+          status: item.correction?.status === '已验证' ? '已验证' : '订正中',
+          currentMethodId: methodId,
+          triedMethodIds: [...new Set([...(item.correction?.triedMethodIds || []), methodId])],
+          preferredMethodId: item.correction?.preferredMethodId,
+          preferredStyle: item.correction?.preferredStyle,
+          attempts: item.correction?.attempts || [],
+          finalAnswerRevealed: item.correction?.finalAnswerRevealed || false,
+          transferPassed: item.correction?.transferPassed || false,
+          selfExplanation: item.correction?.selfExplanation,
+          startedAt: item.correction?.startedAt || now,
+          verifiedAt: item.correction?.verifiedAt,
+        },
+      } : item),
+    }))
+  }
+
+  const recordCorrectionAttempt: AppStoreValue['recordCorrectionAttempt'] = (id, attempt) => {
+    const now = new Date().toISOString()
+    setState((current) => ({
+      ...current,
+      mistakes: current.mistakes.map((item) => item.id === id ? {
+        ...item,
+        primaryCause: attempt.errorCause,
+        studentAnswer: attempt.answer,
+        correction: {
+          status: attempt.correct ? '待验证' : '订正中',
+          currentMethodId: attempt.methodId,
+          triedMethodIds: [...new Set([...(item.correction?.triedMethodIds || []), attempt.methodId])],
+          preferredMethodId: item.correction?.preferredMethodId,
+          preferredStyle: item.correction?.preferredStyle,
+          attempts: [...(item.correction?.attempts || []), { ...attempt, id: crypto.randomUUID(), createdAt: now }].slice(-12),
+          finalAnswerRevealed: item.correction?.finalAnswerRevealed || false,
+          transferPassed: item.correction?.transferPassed || false,
+          selfExplanation: item.correction?.selfExplanation,
+          startedAt: item.correction?.startedAt || now,
+          verifiedAt: item.correction?.verifiedAt,
+        },
+      } : item),
+      activityLogs: [makeLog('review', `完成第 ${attempt.attemptNumber} 次订正`, attempt.correct ? '已答对，进入迁移检测' : '系统将切换讲解方法继续引导'), ...current.activityLogs].slice(0, 60),
+    }))
+  }
+
+  const completeCorrection: AppStoreValue['completeCorrection'] = (id, input) => {
+    const now = new Date().toISOString()
+    setState((current) => {
+      const mistake = current.mistakes.find((item) => item.id === id)
+      if (!mistake) return current
+      const attempts = mistake.correction?.attempts || []
+      const latestScore = input.transferScore ?? attempts.at(-1)?.score ?? 0
+      const mastery = clamp(mistake.mastery + (input.transferPassed ? 18 : 0))
+      const existingPreference = current.strategyPreferences.find((item) => item.style === input.style && item.subject === mistake.subject)
+      const preference: LearningStrategyPreference = existingPreference ? {
+        ...existingPreference,
+        methodName: input.methodName,
+        usedCount: existingPreference.usedCount + 1,
+        successCount: existingPreference.successCount + (input.transferPassed ? 1 : 0),
+        totalScore: existingPreference.totalScore + latestScore,
+        lastUsedAt: now,
+      } : {
+        style: input.style,
+        methodName: input.methodName,
+        subject: mistake.subject,
+        usedCount: 1,
+        successCount: input.transferPassed ? 1 : 0,
+        totalScore: latestScore,
+        lastUsedAt: now,
+      }
+      const strategyPreferences = current.settings.saveEffectiveMethods === false || !input.transferPassed
+        ? current.strategyPreferences
+        : existingPreference
+          ? current.strategyPreferences.map((item) => item === existingPreference ? preference : item)
+          : [preference, ...current.strategyPreferences]
+      return {
+        ...current,
+        strategyPreferences,
+        mistakes: current.mistakes.map((item) => item.id === id ? {
+          ...item,
+          mastery,
+          masteryLevel: getMasteryLevel(mastery),
+          lastReviewedAt: now,
+          nextReviewAt: addDays(now, input.transferPassed ? 3 : 1),
+          correction: {
+            status: input.transferPassed ? '已验证' : '待验证',
+            currentMethodId: input.methodId,
+            triedMethodIds: [...new Set([...(item.correction?.triedMethodIds || []), input.methodId])],
+            preferredMethodId: input.methodId,
+            preferredStyle: input.style,
+            attempts: item.correction?.attempts || [],
+            finalAnswerRevealed: input.finalAnswerRevealed ?? item.correction?.finalAnswerRevealed ?? false,
+            transferPassed: input.transferPassed,
+            selfExplanation: input.selfExplanation,
+            startedAt: item.correction?.startedAt || now,
+            verifiedAt: input.transferPassed ? now : undefined,
+          },
+        } : item),
+        knowledgePoints: updateKnowledge(current.knowledgePoints, {
+          id: mistake.knowledgePointId,
+          name: mistake.knowledgePointName,
+          subject: mistake.subject,
+          chapter: mistake.chapter,
+          correct: input.transferPassed,
+          cause: mistake.primaryCause,
+          delta: input.transferPassed ? 12 : -2,
+        }),
+        reviewTasks: current.reviewTasks.map((task) => task.sourceId === id && task.status === 'pending'
+          ? { ...task, status: input.transferPassed ? 'completed' as const : task.status, completedAt: input.transferPassed ? now : task.completedAt }
+          : task),
+        activityLogs: [makeLog('review', input.transferPassed ? `订正验证通过：${mistake.knowledgePointName}` : `订正待再次验证：${mistake.knowledgePointName}`, `最有效讲法：${input.methodName}`), ...current.activityLogs].slice(0, 60),
+      }
+    })
+    notify(input.transferPassed ? 'success' : 'info', input.transferPassed ? '订正闭环完成' : '已保存本次讲解方法', input.transferPassed ? '最有效讲法已进入学习画像，3 天后安排巩固。' : '系统会继续安排一道迁移题。')
   }
 
   const removeMistake = (id: string) => {
@@ -237,6 +473,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const archiveMistake = (id: string) => {
+    const mistake = stateRef.current.mistakes.find((item) => item.id === id)
+    if (stateRef.current.settings.strictCorrectionMode !== false && !mistake?.correction?.transferPassed) {
+      notify('info', '还不能标记掌握', '先完成多轮订正和迁移检测，避免只是看懂答案。')
+      return
+    }
     setState((current) => ({ ...current, mistakes: current.mistakes.map((item) => item.id === id ? { ...item, archived: true, mastery: 100, masteryLevel: '熟练' } : item) }))
     notify('success', '已标记为掌握')
   }
@@ -325,7 +566,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           } else {
             const mistakeId = crypto.randomUUID()
             questions.unshift({ id: questionId, subject: item.subject, chapter: '每日小测', knowledgePointId: item.knowledgePointId, knowledgePointName: item.knowledgePointName, content: item.content, studentAnswer: item.userAnswer, correctAnswer: item.correctAnswer, questionFormat: item.format, sourceType: item.sourceType, createdAt: now })
-            mistakes.unshift({ id: mistakeId, questionId, subject: item.subject, chapter: '每日小测', knowledgePointId: item.knowledgePointId, knowledgePointName: item.knowledgePointName, originalQuestion: item.content, studentAnswer: item.userAnswer || '', correctAnswer: item.correctAnswer, wrongAt: now, wrongCount: 1, primaryCause: '知识点不会', mastery: 35, masteryLevel: '薄弱', nextReviewAt: addDays(now, 1), sourceType: item.sourceType })
+            mistakes.unshift({ id: mistakeId, questionId, subject: item.subject, chapter: '每日小测', knowledgePointId: item.knowledgePointId, knowledgePointName: item.knowledgePointName, originalQuestion: item.content, studentAnswer: item.userAnswer || '', correctAnswer: item.correctAnswer, wrongAt: now, wrongCount: 1, primaryCause: '知识点不会', mastery: 35, masteryLevel: '薄弱', nextReviewAt: addDays(now, 1), sourceType: item.sourceType, correction: { status: '待订正', triedMethodIds: [], attempts: [], finalAnswerRevealed: false, transferPassed: false } })
             reviews.unshift({ id: crypto.randomUUID(), sourceId: mistakeId, sourceKind: 'mistake', subject: item.subject, title: `复习：${item.knowledgePointName}`, knowledgePointId: item.knowledgePointId, scheduledDate: toDateKey(addDays(now, 1)), status: 'pending', priority: 3, createdAt: now })
           }
         }
@@ -364,7 +605,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           const questionId = `paper-${paper.id}-${item.id}`
           const mistakeId = crypto.randomUUID()
           questions.unshift({ id: questionId, subject: item.subject, chapter: paper.title, knowledgePointId: item.knowledgePointId, knowledgePointName: item.knowledgePointName, content: item.content, studentAnswer: item.studentAnswer, correctAnswer: item.correctAnswer, questionFormat: item.fullScore > 5 ? '解答题' : '选择题', sourceType: 'user_upload', createdAt: paper.createdAt })
-          mistakes.unshift({ id: mistakeId, questionId, subject: item.subject, chapter: paper.title, knowledgePointId: item.knowledgePointId, knowledgePointName: item.knowledgePointName, originalQuestion: item.content, studentAnswer: item.studentAnswer, correctAnswer: item.correctAnswer, wrongAt: paper.date, wrongCount: 1, primaryCause: item.errorCause || '知识点不会', mastery: 35, masteryLevel: '薄弱', nextReviewAt: addDays(paper.createdAt, 1), sourceType: 'user_upload' })
+          mistakes.unshift({ id: mistakeId, questionId, subject: item.subject, chapter: paper.title, knowledgePointId: item.knowledgePointId, knowledgePointName: item.knowledgePointName, originalQuestion: item.content, studentAnswer: item.studentAnswer, correctAnswer: item.correctAnswer, wrongAt: paper.date, wrongCount: 1, primaryCause: item.errorCause || '知识点不会', mastery: 35, masteryLevel: '薄弱', nextReviewAt: addDays(paper.createdAt, 1), sourceType: 'user_upload', correction: { status: '待订正', triedMethodIds: [], attempts: [], finalAnswerRevealed: false, transferPassed: false } })
           reviews.unshift({ id: crypto.randomUUID(), sourceId: mistakeId, sourceKind: 'mistake', subject: item.subject, title: `试卷订正：${item.knowledgePointName}`, knowledgePointId: item.knowledgePointId, scheduledDate: toDateKey(addDays(paper.createdAt, 1)), status: 'pending', priority: 3, createdAt: paper.createdAt })
         }
       })
@@ -390,7 +631,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           const questionId = `simulation-${item.question.id}`
           const mistakeId = crypto.randomUUID()
           questions.unshift({ id: questionId, subject: item.question.subject, chapter: '模拟训练', knowledgePointId: item.question.knowledgePointId, knowledgePointName: item.question.knowledgePointName, content: item.question.content, studentAnswer: item.userAnswer, correctAnswer: item.question.correctAnswer, questionFormat: item.question.format, sourceType: 'ai_generated', createdAt: now })
-          mistakes.unshift({ id: mistakeId, questionId, subject: item.question.subject, chapter: '模拟训练', knowledgePointId: item.question.knowledgePointId, knowledgePointName: item.question.knowledgePointName, originalQuestion: item.question.content, studentAnswer: item.userAnswer, correctAnswer: item.question.correctAnswer, wrongAt: now, wrongCount: 1, primaryCause: item.cause || '知识点不会', mastery: 35, masteryLevel: '薄弱', nextReviewAt: addDays(now, 1), sourceType: 'ai_generated' })
+          mistakes.unshift({ id: mistakeId, questionId, subject: item.question.subject, chapter: '模拟训练', knowledgePointId: item.question.knowledgePointId, knowledgePointName: item.question.knowledgePointName, originalQuestion: item.question.content, studentAnswer: item.userAnswer, correctAnswer: item.question.correctAnswer, wrongAt: now, wrongCount: 1, primaryCause: item.cause || '知识点不会', mastery: 35, masteryLevel: '薄弱', nextReviewAt: addDays(now, 1), sourceType: 'ai_generated', correction: { status: '待订正', triedMethodIds: [], attempts: [], finalAnswerRevealed: false, transferPassed: false } })
           reviews.unshift({ id: crypto.randomUUID(), sourceId: mistakeId, sourceKind: 'mistake', subject: item.question.subject, title: `模拟训练订正：${item.question.knowledgePointName}`, knowledgePointId: item.question.knowledgePointId, scheduledDate: toDateKey(addDays(now, 1)), status: 'pending', priority: 3, createdAt: now })
         }
       })
@@ -407,7 +648,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const parsed = JSON.parse(json)
       const data = (parsed.data ?? parsed) as AppState
       if (!data.profile || !Array.isArray(data.mistakes) || !Array.isArray(data.knowledgePoints)) throw new Error('数据结构无效')
-      setState(data)
+      setState(normalizeState(data))
       notify('success', '数据导入成功')
     } catch (error) {
       notify('error', '数据导入失败', error instanceof Error ? error.message : '无法解析文件')
@@ -421,7 +662,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const value: AppStoreValue = {
-    state, toasts, updateProfile, updateSettings, saveMistake, removeMistake, archiveMistake, reviewMistake, reviewCard, toggleTask, addDailyTask, completeQuiz, addPaper, applySimulation, exportData, importData, resetData, notify, dismissToast,
+    state, toasts, updateProfile, updateSettings, saveMistake, updateMistakeDetails, setCorrectionMethod, recordCorrectionAttempt, completeCorrection, removeMistake, archiveMistake, reviewMistake, reviewCard, toggleTask, addDailyTask, completeQuiz, addPaper, applySimulation, exportData, importData, resetData, notify, dismissToast,
   }
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>

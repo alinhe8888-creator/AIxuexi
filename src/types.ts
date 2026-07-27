@@ -16,6 +16,8 @@ export type SourceType = 'user_upload' | 'real_exam' | 'ai_generated' | 'open_re
 export type TaskType = 'study' | 'review' | 'quiz'
 export type TaskStatus = 'pending' | 'completed'
 export type QuestionFormat = '选择题' | '填空题' | '判断题' | '解答题' | '默写题'
+export type ExplanationStyle = '启发提问' | '生活类比' | '图像框架' | '公式推导' | '步骤拆解' | '反例辨析'
+export type CorrectionStatus = '待订正' | '订正中' | '待验证' | '已验证'
 
 export interface StudentProfile {
   id: string
@@ -56,8 +58,31 @@ export interface QuestionRecord {
   createdAt: string
 }
 
+export interface ExplanationMethod {
+  id: string
+  name: string
+  style: ExplanationStyle
+  bestFor: string
+  openingQuestion: string
+  hints: string[]
+  steps: Array<{ title: string; content: string }>
+  checkpointQuestion: string
+  checkpointAnswer: string
+  checkpointExplanation: string
+  memoryTip: string
+}
+
 export interface AiExplanation {
   knowledgePoints: string[]
+  diagnosis: {
+    likelyCause: ErrorCause
+    confidence: number
+    evidence: string
+    firstQuestion: string
+  }
+  recommendedMethodId: string
+  methods: ExplanationMethod[]
+  answerRevealAfterAttempts: number
   thinking: string
   steps: Array<{ title: string; content: string }>
   finalAnswer: string
@@ -68,6 +93,54 @@ export interface AiExplanation {
     answer: string
     explanation: string
   }
+}
+
+export interface AnswerAssessment {
+  correct: boolean
+  score: number
+  feedback: string
+  misconception: string
+  errorCause: ErrorCause
+  nextAction: 'retry' | 'switch_method' | 'reveal' | 'complete'
+  targetedHint: string
+  suggestedMethodId?: string
+  revealAnswer?: string
+}
+
+export interface CorrectionAttempt {
+  id: string
+  attemptNumber: number
+  answer: string
+  methodId: string
+  correct: boolean
+  score: number
+  feedback: string
+  errorCause: ErrorCause
+  createdAt: string
+}
+
+export interface CorrectionJourney {
+  status: CorrectionStatus
+  currentMethodId?: string
+  triedMethodIds: string[]
+  preferredMethodId?: string
+  preferredStyle?: ExplanationStyle
+  attempts: CorrectionAttempt[]
+  finalAnswerRevealed: boolean
+  transferPassed: boolean
+  selfExplanation?: string
+  startedAt?: string
+  verifiedAt?: string
+}
+
+export interface LearningStrategyPreference {
+  style: ExplanationStyle
+  methodName: string
+  subject?: Subject
+  usedCount: number
+  successCount: number
+  totalScore: number
+  lastUsedAt: string
 }
 
 export interface MistakeRecord {
@@ -93,6 +166,7 @@ export interface MistakeRecord {
   note?: string
   sourceType: SourceType
   archived?: boolean
+  correction?: CorrectionJourney
 }
 
 export interface PaperQuestionAnalysis {
@@ -263,6 +337,10 @@ export interface AppSettings {
   reminderTime: string
   autoAddMistakes: boolean
   dataVersion: number
+  answerRevealAttempts?: number
+  adaptiveExplanation?: boolean
+  saveEffectiveMethods?: boolean
+  strictCorrectionMode?: boolean
 }
 
 export interface AppState {
@@ -278,6 +356,7 @@ export interface AppState {
   cards: StudyCard[]
   knowledgeItems: KnowledgeItem[]
   activityLogs: ActivityLog[]
+  strategyPreferences: LearningStrategyPreference[]
   settings: AppSettings
 }
 
@@ -350,4 +429,5 @@ export interface ParentDashboard {
   reviewStatus: Array<{ label: string; value: number }>
   learningMix: Array<{ label: string; value: number }>
   subjectRadar: Array<{ label: string; mastery: number; accuracy: number; stability: number }>
+  strategyMethods: Array<{ label: string; value: number; usedCount: number; subject?: string }>
 }

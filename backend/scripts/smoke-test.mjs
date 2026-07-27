@@ -115,7 +115,7 @@ try {
   const today = new Date().toISOString().slice(0, 10)
 
   const snapshot = {
-    version: 2,
+    version: 5,
     profile: {
       id: studentLogin.user.id,
       name: '接口测试学生',
@@ -124,16 +124,51 @@ try {
       onboarded: true,
     },
     questions: [],
-    mistakes: [],
+    mistakes: [{
+      id: 'snapshot-mistake',
+      subject: '数学',
+      chapter: '导数',
+      knowledgePointName: '导数的应用',
+      primaryCause: '解题思路错误',
+      wrongAt: new Date().toISOString(),
+      wrongCount: 1,
+      mastery: 55,
+      correction: {
+        status: '已验证',
+        transferPassed: true,
+        triedMethodIds: ['method-guided'],
+        attempts: [{ id: 'attempt-1', correct: true }],
+      },
+    }],
     papers: [],
-    knowledgePoints: [],
+    knowledgePoints: [{
+      id: 'kp-dashboard',
+      subject: '数学',
+      chapter: '导数',
+      name: '导数的应用',
+      mastery: 65,
+      accuracy: 70,
+      errorCount: 1,
+      mainCause: '解题思路错误',
+      forgettingRisk: '中',
+      trend: [55, 65],
+    }],
     reviewTasks: [],
     dailyPlans: [{ id: 'smoke-plan', date: today, tasks: [] }],
     quizzes: [],
     cards: [],
     knowledgeItems: [],
     activityLogs: [],
-    settings: {},
+    strategyPreferences: [{
+      style: '启发提问',
+      methodName: '先问关键条件',
+      subject: '数学',
+      usedCount: 2,
+      successCount: 2,
+      totalScore: 180,
+      lastUsedAt: new Date().toISOString(),
+    }],
+    settings: { answerRevealAttempts: 2, adaptiveExplanation: true },
   }
 
   await request('PUT', '/api/student/snapshot', {
@@ -162,6 +197,10 @@ try {
     { token: parentToken },
   )
   assert.equal(dashboardResult.status, 200, `家长仪表盘失败: ${JSON.stringify(dashboardResult.payload)}`)
+  const dashboard = dashboardResult.payload?.dashboard ?? dashboardResult.payload
+  assert.ok(Array.isArray(dashboard.reviewStatus), '家长端缺少错题订正状态图表')
+  assert.ok(dashboard.reviewStatus.some((item) => item.label === '已验证' && item.value >= 1), '家长端未统计已验证错题')
+  assert.ok(Array.isArray(dashboard.strategyMethods) && dashboard.strategyMethods.length >= 1, '家长端缺少有效讲法图表')
 
   // 私人固定绑定模式已删除 6 位绑定码，404 属于正确行为。
   await request('POST', '/api/student/pair-code', {
@@ -254,7 +293,7 @@ try {
   await request('GET', '/api/not-a-real-endpoint', { expected: 404 })
 
   console.log(
-    `✅ API smoke test passed: 私人账号、固定家长绑定、快照和 ${recordTypes.length} 类学习记录均正常。`,
+    `✅ API smoke test passed: 私人账号、固定家长绑定、自适应订正图表、快照和 ${recordTypes.length} 类学习记录均正常。`,
   )
 } finally {
   server.kill('SIGTERM')

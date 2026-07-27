@@ -2,10 +2,11 @@ interface SnapshotLike {
   profile?: { id?: string; name?: string; grade?: string }
   dailyPlans?: Array<{ date: string; tasks: Array<{ status: string; estimatedMinutes?: number; type?: string }> }>
   knowledgePoints?: Array<{ id: string; subject: string; chapter: string; name: string; mastery: number; accuracy: number; errorCount: number; mainCause?: string; forgettingRisk?: string; trend?: number[] }>
-  mistakes?: Array<{ id: string; subject: string; chapter: string; knowledgePointName: string; primaryCause: string; wrongAt: string; wrongCount: number; mastery: number; archived?: boolean }>
+  mistakes?: Array<{ id: string; subject: string; chapter: string; knowledgePointName: string; primaryCause: string; wrongAt: string; wrongCount: number; mastery: number; archived?: boolean; correction?: { status?: string; transferPassed?: boolean; triedMethodIds?: string[]; attempts?: unknown[] } }>
   quizzes?: Array<{ id: string; title: string; date: string; correctRate: number; status: string; weakPoints?: string[] }>
   activityLogs?: Array<{ id: string; type: string; title: string; description: string; createdAt: string }>
   reviewTasks?: Array<{ id: string; status?: string; dueDate?: string; completedAt?: string }>
+  strategyPreferences?: Array<{ style?: string; methodName?: string; subject?: string; usedCount?: number; successCount?: number; totalScore?: number }>
 }
 
 const dateKey = (value = new Date()) => value.toISOString().slice(0, 10)
@@ -22,6 +23,7 @@ export function buildParentDashboard(snapshot: SnapshotLike, account: { id: stri
   const quizzes = Array.isArray(snapshot.quizzes) ? snapshot.quizzes : []
   const activity = Array.isArray(snapshot.activityLogs) ? snapshot.activityLogs : []
   const reviewTasks = Array.isArray(snapshot.reviewTasks) ? snapshot.reviewTasks : []
+  const strategyPreferences = Array.isArray(snapshot.strategyPreferences) ? snapshot.strategyPreferences : []
   const todayPlan = plans.find((plan) => plan.date === dateKey())
   const tasks = todayPlan?.tasks ?? []
   const completedTasks = tasks.filter((task) => task.status === 'completed')
@@ -75,7 +77,13 @@ export function buildParentDashboard(snapshot: SnapshotLike, account: { id: stri
     { label: '薄弱 40-59', value: knowledge.filter((item) => item.mastery >= 40 && item.mastery < 60).length },
     { label: '需重学 <40', value: knowledge.filter((item) => item.mastery < 40).length },
   ]
-  const reviewStatus = [
+  const correctionCount = mistakes.filter((item) => item.correction?.status).length
+  const reviewStatus = correctionCount ? [
+    { label: '待订正', value: mistakes.filter((item) => !item.correction || item.correction.status === '待订正').length },
+    { label: '订正中', value: mistakes.filter((item) => item.correction?.status === '订正中').length },
+    { label: '待验证', value: mistakes.filter((item) => item.correction?.status === '待验证').length },
+    { label: '已验证', value: mistakes.filter((item) => item.correction?.status === '已验证' || item.correction?.transferPassed).length },
+  ] : [
     { label: '已完成', value: reviewTasks.filter((item) => item.status === 'completed').length },
     { label: '待复习', value: reviewTasks.filter((item) => item.status !== 'completed' && (!item.dueDate || item.dueDate >= dateKey())).length },
     { label: '已逾期', value: reviewTasks.filter((item) => item.status !== 'completed' && Boolean(item.dueDate && item.dueDate < dateKey())).length },
@@ -92,6 +100,19 @@ export function buildParentDashboard(snapshot: SnapshotLike, account: { id: stri
     accuracy: item.accuracy,
     stability: Math.max(0, Math.min(100, 100 - item.riskCount * 12 - item.weakCount * 5)),
   }))
+  const strategyMethods = strategyPreferences
+    .map((item) => {
+      const usedCount = Math.max(0, Number(item.usedCount || 0))
+      const successCount = Math.max(0, Number(item.successCount || 0))
+      return {
+        label: `${item.subject || '跨学科'} · ${item.style || item.methodName || '讲解方法'}`,
+        value: usedCount ? Math.round((successCount / usedCount) * 100) : 0,
+        usedCount,
+        subject: item.subject,
+      }
+    })
+    .sort((left, right) => right.value - left.value || right.usedCount - left.usedCount)
+    .slice(0, 8)
 
   return {
     student: { userId: account.id, displayName: snapshot.profile?.name || account.displayName, email: account.email, grade: snapshot.profile?.grade || '未设置', lastSyncedAt: new Date().toISOString() },
@@ -112,5 +133,6 @@ export function buildParentDashboard(snapshot: SnapshotLike, account: { id: stri
     reviewStatus,
     learningMix,
     subjectRadar,
+    strategyMethods,
   }
 }

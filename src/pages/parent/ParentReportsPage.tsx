@@ -16,7 +16,8 @@ export function ParentReportsPage() {
     <div className="parent-chart-grid">
       <Card><SectionTitle title="主要错因" /><BarList items={dashboard.causes.slice(0, 8)} /></Card>
       <Card><SectionTitle title="知识掌握结构" /><DonutBreakdown items={dashboard.masteryDistribution} centerLabel="知识点" /></Card>
-      <Card><SectionTitle title="复习完成情况" /><DonutBreakdown items={dashboard.reviewStatus} centerLabel="任务" /></Card>
+      <Card><SectionTitle title="错题订正进度" /><DonutBreakdown items={dashboard.reviewStatus} centerLabel="闭环" /></Card>
+      <Card><SectionTitle title="有效讲法成功率" description="只统计完成订正并经过迁移验证的讲解方式" />{(dashboard.strategyMethods || []).length ? <BarList items={(dashboard.strategyMethods || []).map((item) => ({ label: item.label, value: item.value, meta: `${item.value}% · ${item.usedCount} 次` }))} /> : <p className="muted-line">完成几次错题订正后显示。</p>}</Card>
     </div>
     <Card><SectionTitle title="最近小测记录" /><div className="quiz-report-list">{dashboard.recentQuizzes.length ? dashboard.recentQuizzes.map((quiz) => <div key={quiz.id}><div><strong>{quiz.title}</strong><small>{quiz.date}{quiz.weakPoints?.length ? `｜薄弱：${quiz.weakPoints.join('、')}` : ''}</small></div><Badge tone={quiz.correctRate >= 80 ? 'success' : quiz.correctRate >= 60 ? 'warning' : 'danger'}>{quiz.correctRate}%</Badge></div>) : <p className="muted-line">暂无已完成的小测。</p>}</div></Card>
     <Card><SectionTitle title="下一阶段行动清单" /><div className="recommendation-list report-actions">{dashboard.recommendations.map((item) => <div key={item.priority}><span>{item.priority}</span><div><strong>{item.title}</strong><p>{item.description}</p></div></div>)}</div></Card>

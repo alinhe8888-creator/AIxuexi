@@ -83,9 +83,15 @@ function recentScore(lastReviewedAt?: string) {
 }
 
 function relatedEvidence(state: AppState, point: KnowledgePoint) {
-  const mistakeCount = state.mistakes.filter((item) => (
+  const relatedMistakes = state.mistakes.filter((item) => (
     item.knowledgePointId === point.id || item.knowledgePointName === point.name
-  )).reduce((sum, item) => sum + Math.max(1, item.wrongCount), 0)
+  ))
+  const mistakeCount = relatedMistakes.reduce((sum, item) => sum + Math.max(1, item.wrongCount), 0)
+  const correctionEvidence = relatedMistakes.reduce((sum, item) => {
+    const attempts = item.correction?.attempts.length || 0
+    const transferBonus = item.correction?.transferPassed ? 2 : 0
+    return sum + attempts + transferBonus
+  }, 0)
   const quizCount = state.quizzes
     .filter((quiz) => quiz.status === 'completed')
     .flatMap((quiz) => quiz.questions)
@@ -99,7 +105,7 @@ function relatedEvidence(state: AppState, point: KnowledgePoint) {
     )).length
   return Math.max(
     1,
-    point.reviewCount + point.errorCount + point.trend.length + mistakeCount + quizCount + paperCount,
+    point.reviewCount + point.errorCount + point.trend.length + mistakeCount + correctionEvidence + quizCount + paperCount,
   )
 }
 
@@ -198,10 +204,18 @@ export function buildStudentProfile(state: AppState): StudentProfileInsight {
       .map((item) => dateKey(item.createdAt))
       .filter(Boolean),
   ).size
-  const reviewedMistakes = state.mistakes.filter((mistake) => mistake.lastReviewedAt || mistake.archived).length
+  const reviewedMistakes = state.mistakes.filter((mistake) => (
+    mistake.correction?.status === '已验证'
+    || mistake.correction?.transferPassed
+    || mistake.lastReviewedAt
+    || mistake.archived
+  )).length
   const mistakeReviewRate = state.mistakes.length
     ? Math.round(reviewedMistakes / state.mistakes.length * 100)
     : 0
+  const pendingCorrectionCount = state.mistakes.filter((mistake) => (
+    !mistake.archived && mistake.correction?.status !== '已验证' && !mistake.correction?.transferPassed
+  )).length
   const habitScore = Math.round(clamp(
     planCompletion14 * 0.45
     + (activeDays / 14 * 100) * 0.30
@@ -256,6 +270,9 @@ export function buildStudentProfile(state: AppState): StudentProfileInsight {
   }
   if (dueReviewCount > 0) {
     recommendations.push(`今天先处理 ${dueReviewCount} 个到期或高遗忘风险知识点，避免“会过但没留住”。`)
+  }
+  if (pendingCorrectionCount > 0) {
+    recommendations.push(`还有 ${pendingCorrectionCount} 道错题未完成“重答—换讲法—迁移验证”闭环，优先清掉最早的一道。`)
   }
   if (weaknesses[0]) {
     recommendations.push(`优先复习“${weaknesses[0].name}”：先回忆概念，再独立完成 2 道同类题，用结果更新画像。`)

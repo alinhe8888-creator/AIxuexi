@@ -7,23 +7,28 @@ type AppErrorBoundaryProps = {
 
 type AppErrorBoundaryState = {
   error: Error | null
+  resetKey?: string
 }
 
 export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
-  state: AppErrorBoundaryState = { error: null }
+  state: AppErrorBoundaryState = { error: null, resetKey: this.props.resetKey }
 
-  static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
+  static getDerivedStateFromProps(
+    props: AppErrorBoundaryProps,
+    state: AppErrorBoundaryState,
+  ): Partial<AppErrorBoundaryState> | null {
+    if (props.resetKey !== state.resetKey) {
+      return { error: null, resetKey: props.resetKey }
+    }
+    return null
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<AppErrorBoundaryState> {
     return { error }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[AIxuexi] 页面渲染失败', error, info)
-  }
-
-  componentDidUpdate(previousProps: AppErrorBoundaryProps) {
-    if (this.state.error && previousProps.resetKey !== this.props.resetKey) {
-      this.setState({ error: null })
-    }
   }
 
   private retryCurrentPage = () => {

@@ -10,6 +10,7 @@ import {
   Database,
   RotateCcw,
   Sparkles,
+  Star,
   Target,
   TrendingUp,
 } from 'lucide-react'
@@ -107,6 +108,22 @@ export function LearningProfilePage() {
   const metricScore = selectedStats?.score ?? profile.overallScore
   const metricConfidence = selectedStats?.confidence ?? profile.confidence
   const currentQuestion = assessmentQuestions[assessmentStep]
+  const correctionStats = useMemo(() => {
+    const active = state.mistakes.filter((item) => !item.archived)
+    return {
+      pending: active.filter((item) => !item.correction || item.correction.status === '待订正').length,
+      correcting: active.filter((item) => item.correction?.status === '订正中').length,
+      verifying: active.filter((item) => item.correction?.status === '待验证').length,
+      verified: state.mistakes.filter((item) => item.correction?.status === '已验证').length,
+    }
+  }, [state.mistakes])
+  const effectiveMethods = useMemo(() => [...state.strategyPreferences]
+    .sort((left, right) => {
+      const leftRate = left.usedCount ? left.successCount / left.usedCount : 0
+      const rightRate = right.usedCount ? right.successCount / right.usedCount : 0
+      return rightRate - leftRate || right.usedCount - left.usedCount
+    })
+    .slice(0, 6), [state.strategyPreferences])
 
   const answerAssessment = (value: number) => {
     if (!currentQuestion) return
@@ -173,6 +190,29 @@ export function LearningProfilePage() {
         <div className="profile-method-card__formula">知识状态 = 掌握度 34% + 正确率 25% + 趋势 13% + 遗忘风险 13% + 复习稳定性 8% + 时效 7%</div>
       </Card>
 
+      <Card className="effective-method-profile">
+        <div className="effective-method-profile__heading">
+          <div><Star size={22} /><div><strong>有效讲法画像</strong><span>只有完成迁移检测的讲法，才会提高后续推荐权重。</span></div></div>
+          <div className="correction-status-inline">
+            <span>待订正 {correctionStats.pending}</span><span>订正中 {correctionStats.correcting}</span><span>待验证 {correctionStats.verifying}</span><span>已验证 {correctionStats.verified}</span>
+          </div>
+        </div>
+        {effectiveMethods.length ? (
+          <div className="effective-method-grid">
+            {effectiveMethods.map((item) => {
+              const successRate = item.usedCount ? Math.round((item.successCount / item.usedCount) * 100) : 0
+              const averageScore = item.usedCount ? Math.round(item.totalScore / item.usedCount) : 0
+              return <article key={`${item.subject || '全部'}-${item.style}`}>
+                <div><Badge tone="primary">{item.subject || '跨学科'}</Badge><span>{item.style}</span></div>
+                <strong>{item.methodName}</strong>
+                <p>成功率 {successRate}% · 平均订正得分 {averageScore} · 使用 {item.usedCount} 次</p>
+                <ProgressBar value={successRate} compact />
+              </article>
+            })}
+          </div>
+        ) : <EmptyState title="还没有有效讲法数据" description="完成一次错题订正和迁移检测后，系统会开始记录真正适合你的讲解方式。" />}
+      </Card>
+
       <div className="stats-grid four">
         <StatCard label="综合学习状态" value={`${metricScore}%`} hint="知识状态 78% + 学习习惯 22%" icon={<BrainCircuit size={20} />} trend={{ value: selectedTrend.length > 1 ? (selectedTrend.at(-1) || 0) - (selectedTrend[0] || 0) : 0, label: '本阶段' }} />
         <StatCard label="平均掌握度" value={`${metricMastery}%`} hint="按证据量加权" icon={<Target size={20} />} />
@@ -186,7 +226,7 @@ export function LearningProfilePage() {
         <div className="stack">
           <Card><SectionTitle title="知识点掌握地图" description="同时查看证据量、置信度和遗忘风险" />{points.length ? <div className="profile-point-list evidence-profile-list">{points.map((point) => <div key={point.id}><div className="profile-point-head"><div><Badge tone="primary">{point.subject}</Badge><strong>{point.name}</strong><span>{point.chapter}</span></div><div className="profile-evidence-badges"><span className={`confidence-${point.confidenceLevel}`}>置信度 {point.confidence}%</span><Badge tone={point.forgettingRisk === '高' ? 'danger' : point.forgettingRisk === '中' ? 'warning' : 'success'}>{point.forgettingRisk}风险</Badge></div></div><ProgressBar value={point.score} label={`综合状态 · 掌握度 ${point.mastery}% · 正确率 ${point.accuracy}%`} /><div className="profile-point-meta"><span>证据 {point.evidenceCount} 条</span><span>错误 {point.errorCount} 次</span><span>主要错因：{point.mainCause || '暂无'}</span><span>最近复习：{formatDate(point.lastReviewedAt)}</span><span>趋势：{point.trendDelta >= 0 ? '+' : ''}{point.trendDelta}</span></div></div>)}</div> : <EmptyState title="暂无画像数据" description="完成一次题目讲解、小测或试卷分析后开始生成。" />}</Card>
           <Card><SectionTitle title="进步趋势" description="按当前筛选范围综合知识点历史趋势" />{selectedTrend.length ? <div className="profile-trend"><div><strong>{selectedTrend.at(-1) ?? 0}%</strong><span>最近一次综合掌握度</span></div><MiniLineChart values={selectedTrend} height={160} /></div> : <EmptyState title="趋势证据不足" description="完成至少两轮练习或复习后显示变化。" />}</Card>
-          <Card><SectionTitle title="近 14 天学习习惯" description="画像不仅看分数，也看计划是否真正执行" /><div className="profile-habit-grid"><div><CalendarCheck2 size={20} /><strong>{profile.planCompletion14}%</strong><span>计划完成率</span></div><div><Activity size={20} /><strong>{profile.activeDays14}/14</strong><span>活跃天数</span></div><div><Clock3 size={20} /><strong>{profile.mistakeReviewRate}%</strong><span>错题复习率</span></div><div><TrendingUp size={20} /><strong>{profile.habitScore}%</strong><span>学习习惯状态</span></div></div></Card>
+          <Card><SectionTitle title="近 14 天学习习惯" description="画像不仅看分数，也看计划是否真正执行" /><div className="profile-habit-grid"><div><CalendarCheck2 size={20} /><strong>{profile.planCompletion14}%</strong><span>计划完成率</span></div><div><Activity size={20} /><strong>{profile.activeDays14}/14</strong><span>活跃天数</span></div><div><Clock3 size={20} /><strong>{profile.mistakeReviewRate}%</strong><span>错题闭环率</span></div><div><TrendingUp size={20} /><strong>{profile.habitScore}%</strong><span>学习习惯状态</span></div></div></Card>
         </div>
         <div className="stack">
           <Card><SectionTitle title="各科表现" description="综合状态、证据量与到期复习一起看" />{profile.subjects.length ? <div className="subject-profile-list evidence-subject-list">{profile.subjects.map((item) => <button key={item.subject} onClick={() => setSelectedSubject(item.subject)}><div><strong>{item.subject}</strong><span>正确率 {item.accuracy}% · 证据 {item.evidenceCount} 条 · 到期 {item.dueCount}</span></div><div><ProgressBar value={item.score} compact /><em>{item.score}%</em></div></button>)}</div> : <EmptyState title="暂无科目数据" description="有学习记录后显示。" />}</Card>

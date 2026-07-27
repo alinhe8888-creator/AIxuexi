@@ -87,8 +87,11 @@ export function DailyPlanPage() {
     const reviewMinutes = shortTask ? 15 : 20
     const trainingMinutes = shortTask ? 15 : 25
     const weakest = [...state.knowledgePoints].sort((a, b) => a.mastery - b.mastery)[0]
-    const subject = weakest?.subject || state.profile.selectedSubjects[0] || '数学'
-    const chapter = state.profile.currentChapters[subject] || weakest?.chapter || '当前章节'
+    const pendingCorrection = state.mistakes
+      .filter((item) => !item.archived && item.correction?.status !== '已验证' && !item.correction?.transferPassed)
+      .sort((a, b) => a.wrongAt.localeCompare(b.wrongAt))[0]
+    const subject = pendingCorrection?.subject || weakest?.subject || state.profile.selectedSubjects[0] || '数学'
+    const chapter = state.profile.currentChapters[subject] || pendingCorrection?.chapter || weakest?.chapter || '当前章节'
     return [
       {
         id: 'starter:preview',
@@ -101,11 +104,13 @@ export function DailyPlanPage() {
       },
       {
         id: 'starter:review',
-        title: weakest ? `复习 ${weakest.name}` : '复习最近错题',
-        description: weakest ? `当前掌握度 ${weakest.mastery}%，先回忆再订正。` : '从错题和遗忘风险中选一个重点。',
+        title: pendingCorrection ? `完成错题闭环 · ${pendingCorrection.knowledgePointName}` : weakest ? `复习 ${weakest.name}` : '复习最近错题',
+        description: pendingCorrection
+          ? `${pendingCorrection.correction?.status || '待订正'}：重新作答、换讲法并完成迁移检测。`
+          : weakest ? `当前掌握度 ${weakest.mastery}%，先回忆再订正。` : '从错题和遗忘风险中选一个重点。',
         minutes: reviewMinutes,
         kind: 'review',
-        route: '/study-cycle',
+        route: pendingCorrection ? '/mistakes' : '/study-cycle',
         completed: Boolean(completions['starter:review']),
       },
       {

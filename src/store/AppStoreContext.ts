@@ -2,7 +2,10 @@ import { createContext } from 'react'
 import type {
   AppSettings,
   AppState,
+  CorrectionAttempt,
   DailyTask,
+  ExplanationStyle,
+  MistakeRecord,
   PaperRecord,
   QuizQuestion,
   SaveMistakeInput,
@@ -30,6 +33,10 @@ export interface AppStoreValue {
   updateProfile: (profile: Partial<StudentProfile>) => void
   updateSettings: (settings: Partial<AppSettings>) => void
   saveMistake: (input: SaveMistakeInput) => string
+  updateMistakeDetails: (id: string, patch: Partial<Pick<MistakeRecord, 'primaryCause' | 'secondaryCause' | 'note' | 'studentAnswer'>>) => void
+  setCorrectionMethod: (id: string, methodId: string) => void
+  recordCorrectionAttempt: (id: string, attempt: Omit<CorrectionAttempt, 'id' | 'createdAt'>) => void
+  completeCorrection: (id: string, input: { methodId: string; style: ExplanationStyle; methodName: string; transferPassed: boolean; transferScore?: number; selfExplanation?: string; finalAnswerRevealed?: boolean }) => void
   removeMistake: (id: string) => void
   archiveMistake: (id: string) => void
   reviewMistake: (id: string, rating: 'again' | 'hard' | 'good' | 'easy') => void

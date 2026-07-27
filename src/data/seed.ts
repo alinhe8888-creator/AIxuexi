@@ -4,7 +4,7 @@ import { FIXED_SUBJECTS, FIXED_TEXTBOOK_VERSIONS } from '../config/curriculum'
 export function createSeedState(): AppState {
   const now = new Date().toISOString()
   return {
-    version: 3,
+    version: 5,
     profile: {
       id: 'private-student-profile',
       name: '同学',
@@ -29,13 +29,18 @@ export function createSeedState(): AppState {
     cards: [],
     knowledgeItems: [],
     activityLogs: [],
+    strategyPreferences: [],
     settings: {
       theme: 'system',
       aiMode: 'guided',
       dailyReminder: false,
       reminderTime: '20:00',
       autoAddMistakes: true,
-      dataVersion: 3,
+      dataVersion: 5,
+      answerRevealAttempts: 2,
+      adaptiveExplanation: true,
+      saveEffectiveMethods: true,
+      strictCorrectionMode: true,
     },
   }
 }

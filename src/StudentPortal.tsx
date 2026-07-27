@@ -18,10 +18,11 @@ import './styles/student-polish.css'
 import './styles/private-family.css'
 import './styles/final-upgrade.css'
 import './styles/family-learning-v160.css'
+import './styles/adaptive-tutor.css'
 
 type UnknownModule = Record<string, unknown>
 
-const CHUNK_RETRY_KEY = 'aixuexi:route-chunk-retry:v4'
+const CHUNK_RETRY_KEY = 'aixuexi:route-chunk-retry:v5'
 const SCROLL_KEY_PREFIX = 'aixuexi:route-scroll:v1'
 const CHUNK_ERROR_PATTERN =
   /ChunkLoadError|Loading chunk|dynamically imported module|module script|Failed to fetch/i
