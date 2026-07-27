@@ -2,6 +2,8 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useRef,
+  useState,
   type ComponentType,
   type ReactNode,
 } from 'react'
@@ -14,10 +16,13 @@ import { AppStoreProvider } from './store/AppStore'
 import './App.css'
 import './styles/student-polish.css'
 import './styles/private-family.css'
+import './styles/final-upgrade.css'
+import './styles/family-learning-v160.css'
 
 type UnknownModule = Record<string, unknown>
 
-const CHUNK_RETRY_KEY = 'aixuexi:route-chunk-retry:v3'
+const CHUNK_RETRY_KEY = 'aixuexi:route-chunk-retry:v4'
+const SCROLL_KEY_PREFIX = 'aixuexi:route-scroll:v1'
 const CHUNK_ERROR_PATTERN =
   /ChunkLoadError|Loading chunk|dynamically imported module|module script|Failed to fetch/i
 
@@ -54,7 +59,20 @@ const NotFoundPage = lazyNamed(() => import('./pages/NotFoundPage'), 'NotFoundPa
 const PaperAnalysisPage = lazyNamed(() => import('./pages/PaperAnalysisPage'), 'PaperAnalysisPage')
 const PhotoExplainPage = lazyNamed(() => import('./pages/PhotoExplainPage'), 'PhotoExplainPage')
 const SettingsPage = lazyNamed(() => import('./pages/SettingsPage'), 'SettingsPage')
+const StudyCyclePage = lazyNamed(() => import('./pages/StudyCyclePage'), 'StudyCyclePage')
 const SimulationPage = lazyNamed(() => import('./pages/SimulationPage'), 'SimulationPage')
+
+const studentPages = [
+  { path: '/daily-plan', Component: DailyPlanPage },
+  { path: '/photo-explain', Component: PhotoExplainPage },
+  { path: '/paper-analysis', Component: PaperAnalysisPage },
+  { path: '/mistakes', Component: MistakeBookPage },
+  { path: '/study-cycle', Component: StudyCyclePage },
+  { path: '/simulation', Component: SimulationPage },
+  { path: '/profile', Component: LearningProfilePage },
+  { path: '/knowledge', Component: KnowledgeBasePage },
+  { path: '/settings', Component: SettingsPage },
+] as const
 
 function PageLoading({ label = '正在打开' }: { label?: string }) {
   return (
@@ -67,11 +85,26 @@ function PageLoading({ label = '正在打开' }: { label?: string }) {
 
 function RouteRecovery() {
   const { pathname } = useLocation()
+  const previousPath = useRef(pathname)
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'auto' })
+    const previous = previousPath.current
+    if (previous !== pathname) {
+      sessionStorage.setItem(`${SCROLL_KEY_PREFIX}:${previous}`, String(window.scrollY))
+    }
+
+    previousPath.current = pathname
+    const saved = Number(sessionStorage.getItem(`${SCROLL_KEY_PREFIX}:${pathname}`) || 0)
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: Number.isFinite(saved) ? saved : 0, behavior: 'auto' })
+    })
     const timer = window.setTimeout(() => sessionStorage.removeItem(CHUNK_RETRY_KEY), 10_000)
-    return () => window.clearTimeout(timer)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      sessionStorage.setItem(`${SCROLL_KEY_PREFIX}:${pathname}`, String(window.scrollY))
+    }
   }, [pathname])
 
   return null
@@ -80,42 +113,71 @@ function RouteRecovery() {
 function PublicOnly({ children }: { children: ReactNode }) {
   const { user, status } = useAuth()
   if (status === 'loading') return <PageLoading label="正在确认登录状态" />
-  if (user) return <Navigate to="/photo-explain" replace />
+  if (user) return <Navigate to="/daily-plan" replace />
   return children
 }
 
 function StudentLearningApp() {
   const location = useLocation()
+  const activePath = studentPages.some((page) => page.path === location.pathname)
+    ? location.pathname
+    : ''
+
+  const [visited, setVisited] = useState<Set<string>>(
+    () => new Set(activePath ? [activePath] : []),
+  )
+
+  useEffect(() => {
+    if (!activePath) return
+    setVisited((current) => {
+      if (current.has(activePath)) return current
+      const next = new Set(current)
+      next.add(activePath)
+      return next
+    })
+  }, [activePath])
+
+  if (location.pathname === '/') {
+    return <Navigate to="/daily-plan" replace />
+  }
 
   return (
     <Layout>
       <div className="route-view route-view--stable">
-        <AppErrorBoundary resetKey={location.key}>
-          <Suspense fallback={<PageLoading />}>
-            <Routes>
-              <Route path="/" element={<Navigate to="/photo-explain" replace />} />
-              <Route path="/photo-explain" element={<PhotoExplainPage />} />
-              <Route path="/paper-analysis" element={<PaperAnalysisPage />} />
-              <Route path="/mistakes" element={<MistakeBookPage />} />
-              <Route path="/simulation" element={<SimulationPage />} />
-              <Route path="/daily-plan" element={<DailyPlanPage />} />
-              <Route path="/profile" element={<LearningProfilePage />} />
-              <Route path="/knowledge" element={<KnowledgeBasePage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </Suspense>
-        </AppErrorBoundary>
+        {studentPages.map(({ path, Component }) => {
+          if (!visited.has(path)) return null
+          const active = activePath === path
+          return (
+            <section
+              key={path}
+              hidden={!active}
+              aria-hidden={!active}
+              data-route-cache={path}
+            >
+              <AppErrorBoundary resetKey={path}>
+                <Suspense fallback={<PageLoading />}>
+                  <Component />
+                </Suspense>
+              </AppErrorBoundary>
+            </section>
+          )
+        })}
+
+        {!activePath && (
+          <AppErrorBoundary resetKey="student-not-found">
+            <Suspense fallback={<PageLoading />}>
+              <NotFoundPage />
+            </Suspense>
+          </AppErrorBoundary>
+        )}
       </div>
     </Layout>
   )
 }
 
 export default function StudentPortal() {
-  const location = useLocation()
-
   return (
-    <AppErrorBoundary resetKey={location.key}>
+    <AppErrorBoundary resetKey="student-root">
       <RouteRecovery />
       <Suspense fallback={<PageLoading />}>
         <Routes>

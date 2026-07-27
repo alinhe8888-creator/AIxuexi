@@ -4,7 +4,9 @@ import type {
   PaperQuestionAnalysis,
   QuizQuestion,
   Subject,
+  QuestionFormat,
 } from '../types'
+import type { StudyCycleResult, StudyCycleMode, StudyDepth, SimulationDifficulty, SimulationMode } from '../utils/familyLearningWorkspace'
 import { apiRequest, USE_MOCK_API } from './apiClient'
 
 export interface OcrQuestionInput {
@@ -25,6 +27,18 @@ export interface SimulationInput {
   subject: Subject
   points: Array<{ id: string; name: string }>
   count: number
+  mode?: SimulationMode
+  formats?: QuestionFormat[]
+  difficulty?: SimulationDifficulty
+  durationMinutes?: number
+}
+export interface StudyCycleInput {
+  mode: StudyCycleMode
+  subject: Subject
+  chapter: string
+  knowledgePoint: string
+  duration: number
+  depth: StudyDepth
 }
 export interface KnowledgeSearchFilters {
   subject?: Subject
@@ -55,7 +69,7 @@ export const learningApi = {
       }>('/api/ocr/question', {
         method: 'POST',
         body: JSON.stringify(input),
-        timeoutMs: 180_000,
+        timeoutMs: 240_000,
       })
     },
 
@@ -64,7 +78,7 @@ export const learningApi = {
       return apiRequest<PaperQuestionAnalysis[]>('/api/ocr/paper', {
         method: 'POST',
         body: JSON.stringify(input),
-        timeoutMs: 300_000,
+        timeoutMs: 360_000,
       })
     },
   },
@@ -75,7 +89,7 @@ export const learningApi = {
       return apiRequest<AiExplanation>('/api/ai/explain', {
         method: 'POST',
         body: JSON.stringify(input),
-        timeoutMs: 180_000,
+        timeoutMs: 240_000,
       })
     },
 
@@ -84,7 +98,18 @@ export const learningApi = {
       return apiRequest<QuizQuestion[]>('/api/ai/simulation', {
         method: 'POST',
         body: JSON.stringify(input),
-        timeoutMs: 180_000,
+        timeoutMs: 360_000,
+        retry: 1,
+      })
+    },
+
+    async generateStudyCycle(input: StudyCycleInput): Promise<StudyCycleResult> {
+      requireRealApi()
+      return apiRequest<StudyCycleResult>('/api/ai/study-cycle', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        timeoutMs: 300_000,
+        retry: 1,
       })
     },
   },
@@ -105,6 +130,7 @@ export const learningApi = {
         method: 'POST',
         body: JSON.stringify({ snapshot }),
         retry: 1,
+        timeoutMs: 120_000,
       })
     },
   },

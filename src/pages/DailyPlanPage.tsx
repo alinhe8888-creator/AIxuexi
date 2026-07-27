@@ -1,63 +1,192 @@
-import { CalendarCheck2, CheckCircle2, Circle, Clock3, Plus, Sparkles } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  BookOpen,
+  Check,
+  ChevronRight,
+  ClipboardCheck,
+  Clock3,
+  RefreshCcw,
+  Sparkles,
+  Target,
+} from 'lucide-react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, EmptyState, Modal, PageHeader, ProgressBar, SectionTitle } from '../components/ui'
 import { useAppStore } from '../store/useAppStore'
-import type { Subject, TaskType } from '../types'
-import { addDays, formatDate, toDateKey } from '../utils/date'
+import {
+  loadDailyCompletions,
+  loadProfileAssessment,
+  loadStudySessions,
+  localDateKey,
+  toggleDailyCompletion,
+  type StudySession,
+} from '../utils/familyLearningWorkspace'
+
+type PlanItem = {
+  id: string
+  title: string
+  description: string
+  minutes: number
+  kind: 'preview' | 'review' | 'training' | 'existing'
+  route: string
+  completed: boolean
+}
+
+function kindMeta(kind: PlanItem['kind']) {
+  if (kind === 'preview') return { label: '预习', icon: BookOpen }
+  if (kind === 'review') return { label: '复习', icon: RefreshCcw }
+  if (kind === 'training') return { label: '训练', icon: ClipboardCheck }
+  return { label: '计划', icon: Target }
+}
 
 export function DailyPlanPage() {
   const navigate = useNavigate()
-  const { state, toggleTask, addDailyTask } = useAppStore()
-  const [date, setDate] = useState(toDateKey())
-  const [modalOpen, setModalOpen] = useState(false)
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [subject, setSubject] = useState<Subject>('数学')
-  const [minutes, setMinutes] = useState(20)
-  const [type, setType] = useState<TaskType>('study')
+  const { state } = useAppStore()
+  const [sessions, setSessions] = useState<StudySession[]>(() => loadStudySessions())
+  const [completions, setCompletions] = useState(() => loadDailyCompletions())
+  const [assessment, setAssessment] = useState(() => loadProfileAssessment())
+  const today = localDateKey()
 
-  const dates = useMemo(() => Array.from({ length: 7 }, (_, index) => toDateKey(addDays(new Date(), index - 2))), [])
-  const plan = state.dailyPlans.find((item) => item.date === date)
-  const completed = plan?.tasks.filter((item) => item.status === 'completed').length ?? 0
-  const total = plan?.tasks.length ?? 0
-  const totalMinutes = plan?.tasks.reduce((sum, item) => sum + item.estimatedMinutes, 0) ?? 0
-  const dueReviews = state.reviewTasks.filter((task) => task.status === 'pending' && task.scheduledDate <= date)
+  useEffect(() => {
+    const refresh = () => {
+      setSessions(loadStudySessions())
+      setCompletions(loadDailyCompletions())
+      setAssessment(loadProfileAssessment())
+    }
+    window.addEventListener('aixuexi:workspace-changed', refresh)
+    return () => window.removeEventListener('aixuexi:workspace-changed', refresh)
+  }, [])
 
-  const add = () => {
-    if (!title.trim()) return
-    addDailyTask({ title, description, subject, estimatedMinutes: minutes, type })
-    setModalOpen(false); setTitle(''); setDescription('')
-  }
+  const planItems = useMemo<PlanItem[]>(() => {
+    const todayPlan = [...state.dailyPlans].reverse().find((plan) => plan.date.slice(0, 10) === today)
+    const existing = (todayPlan?.tasks || []).map((task) => ({
+      id: `existing:${task.id}`,
+      title: task.title,
+      description: task.description,
+      minutes: task.estimatedMinutes,
+      kind: task.type === 'review' ? 'review' as const : task.type === 'quiz' ? 'training' as const : 'existing' as const,
+      route: task.type === 'review' ? '/study-cycle' : task.type === 'quiz' ? '/simulation' : '/photo-explain',
+      completed: task.status === 'completed' || Boolean(completions[`existing:${task.id}`]),
+    }))
+
+    const generated = sessions
+      .filter((session) => session.createdAt.slice(0, 10) === today)
+      .map((session) => ({
+        id: `session:${session.id}`,
+        title: session.result.title,
+        description: `${session.subject} · ${session.chapter || session.knowledgePoint || '自主学习'}`,
+        minutes: session.duration,
+        kind: session.mode,
+        route: '/study-cycle',
+        completed: Boolean(completions[`session:${session.id}`]),
+      }))
+
+    const result = [...generated, ...existing]
+    if (result.length) return result
+
+    const shortTask = assessment?.focusScore !== undefined && assessment.focusScore < 70
+    const previewMinutes = shortTask ? 15 : 25
+    const reviewMinutes = shortTask ? 15 : 20
+    const trainingMinutes = shortTask ? 15 : 25
+    const weakest = [...state.knowledgePoints].sort((a, b) => a.mastery - b.mastery)[0]
+    const subject = weakest?.subject || state.profile.selectedSubjects[0] || '数学'
+    const chapter = state.profile.currentChapters[subject] || weakest?.chapter || '当前章节'
+    return [
+      {
+        id: 'starter:preview',
+        title: `预习 ${subject} · ${chapter}`,
+        description: '先看学习目标和核心概念，再做 2—3 道自测题。',
+        minutes: previewMinutes,
+        kind: 'preview',
+        route: '/study-cycle',
+        completed: Boolean(completions['starter:preview']),
+      },
+      {
+        id: 'starter:review',
+        title: weakest ? `复习 ${weakest.name}` : '复习最近错题',
+        description: weakest ? `当前掌握度 ${weakest.mastery}%，先回忆再订正。` : '从错题和遗忘风险中选一个重点。',
+        minutes: reviewMinutes,
+        kind: 'review',
+        route: '/study-cycle',
+        completed: Boolean(completions['starter:review']),
+      },
+      {
+        id: 'starter:training',
+        title: '完成一组专项小练',
+        description: '建议 5 道题，题型混合，用于验证预习和复习结果。',
+        minutes: trainingMinutes,
+        kind: 'training',
+        route: '/simulation',
+        completed: Boolean(completions['starter:training']),
+      },
+    ]
+  }, [assessment, completions, sessions, state.dailyPlans, state.knowledgePoints, state.profile, today])
+
+  const completed = planItems.filter((item) => item.completed).length
+  const totalMinutes = planItems.reduce((sum, item) => sum + item.minutes, 0)
+  const progress = planItems.length ? Math.round((completed / planItems.length) * 100) : 0
+
+  const toggle = (id: string) => setCompletions(toggleDailyCompletion(id))
 
   return (
-    <div>
-      <PageHeader eyebrow="自动计划 + 手动调整" title="每日计划" description="系统根据错题、薄弱知识点、到期复习和近期小测生成任务。你也可以添加自己的任务。" actions={<Button onClick={() => setModalOpen(true)}><Plus size={17} />添加任务</Button>} />
-
-      <Card className="date-strip">{dates.map((item) => { const currentPlan = state.dailyPlans.find((planItem) => planItem.date === item); const done = currentPlan?.tasks.filter((task) => task.status === 'completed').length ?? 0; const taskCount = currentPlan?.tasks.length ?? 0; return <button key={item} className={date === item ? 'active' : ''} onClick={() => setDate(item)}><span>{new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(new Date(item))}</span><strong>{new Date(item).getDate()}</strong><small>{taskCount ? `${done}/${taskCount}` : '暂无'}</small></button> })}</Card>
-
-      <div className="stats-grid three">
-        <Card><span>任务完成度</span><strong>{total ? Math.round(completed / total * 100) : 0}%</strong><ProgressBar value={total ? completed / total * 100 : 0} /></Card>
-        <Card><span>预计学习时间</span><strong>{totalMinutes} 分钟</strong><p>建议分成 2–3 个学习时段</p></Card>
-        <Card><span>到期复习</span><strong>{dueReviews.length} 项</strong><p>优先处理高遗忘风险内容</p></Card>
-      </div>
-
-      <div className="content-grid main-side">
-        <Card>
-          <SectionTitle title={`${date === toDateKey() ? '今日' : date}任务`} description="点击圆圈即可标记完成" action={date === toDateKey() ? <Badge tone="primary"><Sparkles size={14} />智能生成</Badge> : undefined} />
-          {plan?.tasks.length ? <div className="plan-task-list">{plan.tasks.map((task) => <div key={task.id} className={task.status === 'completed' ? 'done' : ''}><button onClick={() => toggleTask(plan.id, task.id)}>{task.status === 'completed' ? <CheckCircle2 size={23} /> : <Circle size={23} />}</button><span className={`task-type ${task.type}`}>{task.type === 'study' ? '学' : task.type === 'review' ? '复' : '测'}</span><div><strong>{task.title}</strong><p>{task.description}</p></div>{task.subject && <Badge>{task.subject}</Badge>}<span className="task-minutes"><Clock3 size={14} />{task.estimatedMinutes} 分钟</span>{task.type === 'quiz' && task.status !== 'completed' && <Button size="sm" onClick={() => navigate('/quiz')}>开始</Button>}</div>)}</div> : <EmptyState title="这一天还没有计划" description="当前演示版自动生成今天和明天的关键任务，也可以手动添加。" />}
-        </Card>
-
-        <div className="stack">
-          <Card><SectionTitle title="任务生成依据" /><div className="plan-basis"><div><span>1</span><strong>到期错题</strong><p>按照下次复习时间自动进入计划</p></div><div><span>2</span><strong>薄弱知识点</strong><p>掌握度低、重复出错的内容优先</p></div><div><span>3</span><strong>小测结果</strong><p>今日答错内容自动进入第二天任务</p></div></div></Card>
-          <Card><SectionTitle title="近期计划" />{state.dailyPlans.slice().sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5).map((item) => <button className="plan-history-row" key={item.id} onClick={() => setDate(item.date)}><CalendarCheck2 size={18} /><div><strong>{item.date}</strong><span>{item.tasks.filter((task) => task.status === 'completed').length}/{item.tasks.length} 项完成</span></div><ProgressBar value={item.tasks.length ? item.tasks.filter((task) => task.status === 'completed').length / item.tasks.length * 100 : 0} compact /></button>)}</Card>
-          <Card className="plan-tip"><strong>计划不是越满越好</strong><p>当前每日目标为 {state.profile.dailyMinutes} 分钟。系统会优先保留高价值任务，避免堆积大量无效练习。</p><small>档案更新时间：{formatDate(state.profile.updatedAt, true)}</small></Card>
+    <div className="family-page daily-plan-v160">
+      <header className="family-page-header">
+        <div>
+          <span className="family-eyebrow"><Sparkles size={15} /> 每天先看这里</span>
+          <h1>今日计划</h1>
+          <p>把预习、复习和训练排成一条线，完成一项再进入下一项。{assessment ? ` 已按“${assessment.rhythm}”画像调整任务长度。` : ''}</p>
         </div>
-      </div>
+        <button className="family-primary-button" onClick={() => navigate('/study-cycle')}>
+          生成预习/复习 <ChevronRight size={17} />
+        </button>
+      </header>
 
-      <Modal open={modalOpen} title="添加今日任务" onClose={() => setModalOpen(false)} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>取消</Button><Button onClick={add}>添加任务</Button></>}>
-        <div className="form-stack"><label>任务名称<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：完成导数同类题" /></label><label>任务说明<textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="写清楚要完成什么" /></label><div className="form-row two"><label>科目<select value={subject} onChange={(event) => setSubject(event.target.value as Subject)}>{state.profile.selectedSubjects.map((item) => <option key={item}>{item}</option>)}</select></label><label>预计分钟<input type="number" min="5" max="180" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} /></label></div><label>任务类型<select value={type} onChange={(event) => setType(event.target.value as TaskType)}><option value="study">学习</option><option value="review">复习</option><option value="quiz">小测</option></select></label></div>
-      </Modal>
+      <section className="plan-overview-card">
+        <div className="plan-overview-main">
+          <div className="plan-progress-ring" style={{ '--plan-progress': `${progress}%` } as CSSProperties}>
+            <strong>{progress}%</strong><span>已完成</span>
+          </div>
+          <div>
+            <h2>{completed === planItems.length ? '今天的计划已完成' : `还有 ${planItems.length - completed} 项待完成`}</h2>
+            <p>预计 {totalMinutes} 分钟 · 建议按预习 → 复习 → 训练的顺序进行</p>
+          </div>
+        </div>
+        <div className="plan-overview-stats">
+          <div><Check size={18} /><strong>{completed}/{planItems.length}</strong><span>任务</span></div>
+          <div><Clock3 size={18} /><strong>{totalMinutes}</strong><span>分钟</span></div>
+        </div>
+      </section>
+
+      <section className="plan-task-list">
+        {planItems.map((item, index) => {
+          const meta = kindMeta(item.kind)
+          const Icon = meta.icon
+          return (
+            <article key={item.id} className={item.completed ? 'plan-task is-completed' : 'plan-task'}>
+              <button className="plan-task-check" onClick={() => toggle(item.id)} aria-label={item.completed ? '标记未完成' : '标记完成'}>
+                {item.completed ? <Check size={17} /> : <span>{index + 1}</span>}
+              </button>
+              <div className={`plan-task-icon plan-task-icon--${item.kind}`}><Icon size={20} /></div>
+              <div className="plan-task-copy">
+                <div><span>{meta.label}</span><em>{item.minutes} 分钟</em></div>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+              </div>
+              <button className="plan-task-enter" onClick={() => navigate(item.route)}>开始 <ChevronRight size={16} /></button>
+            </article>
+          )
+        })}
+      </section>
+
+      <section className="plan-quick-grid">
+        <button onClick={() => navigate('/study-cycle', { state: { mode: 'preview' } })}>
+          <BookOpen size={22} /><strong>生成预习</strong><span>围绕下一章节建立框架</span>
+        </button>
+        <button onClick={() => navigate('/study-cycle', { state: { mode: 'review' } })}>
+          <RefreshCcw size={22} /><strong>安排复习</strong><span>优先处理错题和遗忘风险</span>
+        </button>
+        <button onClick={() => navigate('/simulation')}>
+          <ClipboardCheck size={22} /><strong>出一组题</strong><span>整卷或 3—10 道专项题</span>
+        </button>
+      </section>
     </div>
   )
 }

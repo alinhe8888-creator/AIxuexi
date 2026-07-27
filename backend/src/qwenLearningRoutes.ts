@@ -13,7 +13,7 @@ import { createLearningAssetKey, createReadUrl, isR2Ready, putObjectBuffer } fro
 
 const router = Router()
 const studentOnly = [requireAuth, requireRole('student')] as const
-const timeoutMs = Math.max(30_000, Number(process.env.AI_TIMEOUT_MS || 180_000))
+const timeoutMs = Math.max(60_000, Number(process.env.AI_TIMEOUT_MS || 300_000))
 
 
 type SavedImage = { key: string; url: string; contentType: string }
@@ -64,10 +64,25 @@ const explainSchema = z.object({
   content: z.string().min(1).max(40_000),
   correctAnswer: z.string().optional(),
 })
+const questionFormatSchema = z.enum(['选择题', '填空题', '判断题', '解答题', '默写题'])
 const simulationSchema = z.object({
   subject: subjectSchema,
   points: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
   count: z.number().int().min(1).max(20).default(5),
+  mode: z.enum(['mini', 'paper']).default('mini'),
+  formats: z.array(questionFormatSchema).min(1).max(5).default(['选择题', '填空题', '解答题']),
+  difficulty: z.enum(['基础', '中等', '提高', '混合']).default('混合'),
+  durationMinutes: z.number().int().min(5).max(180).default(25),
+})
+const studyCycleSchema = z.object({
+  mode: z.enum(['preview', 'review']),
+  subject: subjectSchema,
+  chapter: z.string().max(200).default(''),
+  knowledgePoint: z.string().max(200).default(''),
+  duration: z.number().int().min(10).max(60).default(25),
+  depth: z.enum(['快速', '标准', '深入']).default('标准'),
+}).refine((value) => Boolean(value.chapter.trim() || value.knowledgePoint.trim()), {
+  message: '章节和知识点至少填写一项',
 })
 
 function extractJson(text: string): unknown {
@@ -79,27 +94,46 @@ function extractJson(text: string): unknown {
   return JSON.parse(cleaned.slice(Math.min(...indexes))) as unknown
 }
 
-async function qwenJson(input: {
-  model: string
+async function aiJson(input: {
+  provider: 'vision' | 'text'
+  model?: string
   messages: unknown[]
   maxTokens?: number
+  enableThinking?: boolean
+  requestTimeoutMs?: number
 }) {
-  const apiKey = (process.env.QWEN_API_KEY || process.env.AI_API_KEY || '').trim()
-  if (!apiKey) throw new Error('Render 尚未配置 QWEN_API_KEY')
+  const useDeepSeek = input.provider === 'text' && Boolean((process.env.DEEPSEEK_API_KEY || '').trim())
+  const apiKey = ((
+    useDeepSeek
+      ? process.env.DEEPSEEK_API_KEY
+      : process.env.QWEN_API_KEY || process.env.AI_API_KEY
+  ) ?? '').trim()
+  if (!apiKey) {
+    throw new Error(useDeepSeek ? 'Render 尚未配置 DEEPSEEK_API_KEY' : 'Render 尚未配置 QWEN_API_KEY')
+  }
+
   const baseUrl = (
-    process.env.QWEN_API_BASE_URL ||
-    'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    useDeepSeek
+      ? process.env.DEEPSEEK_API_BASE_URL || 'https://api.deepseek.com'
+      : process.env.QWEN_API_BASE_URL || process.env.AI_API_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   ).replace(/\/+$/, '')
+  const model = input.model || (
+    useDeepSeek
+      ? process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+      : input.provider === 'vision'
+        ? process.env.QWEN_VISION_MODEL || process.env.AI_VISION_MODEL || 'qwen3.7-plus'
+        : process.env.QWEN_TEXT_MODEL || process.env.QWEN_MODEL || process.env.AI_MODEL || 'qwen3.7-plus'
+  )
 
   const run = async (withFormat: boolean) => {
     const body: Record<string, unknown> = {
-      model: input.model,
+      model,
       messages: input.messages,
       stream: false,
       temperature: 0.15,
       max_tokens: input.maxTokens || 12_000,
-      enable_thinking: true,
     }
+    if (!useDeepSeek) body.enable_thinking = input.enableThinking ?? true
     if (withFormat) body.response_format = { type: 'json_object' }
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -109,12 +143,13 @@ async function qwenJson(input: {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(input.requestTimeoutMs || timeoutMs),
     })
 
     if (!response.ok) {
+      const providerName = useDeepSeek ? 'DeepSeek' : 'Qwen'
       throw Object.assign(
-        new Error(`Qwen 返回 ${response.status}: ${(await response.text()).slice(0, 800)}`),
+        new Error(`${providerName} 返回 ${response.status}: ${(await response.text()).slice(0, 800)}`),
         { status: response.status },
       )
     }
@@ -123,7 +158,7 @@ async function qwenJson(input: {
       choices?: Array<{ message?: { content?: string | null } }>
     }
     const content = payload.choices?.[0]?.message?.content?.trim()
-    if (!content) throw new Error('Qwen 返回空内容')
+    if (!content) throw new Error(`${useDeepSeek ? 'DeepSeek' : 'Qwen'} 返回空内容`)
     return extractJson(content)
   }
 
@@ -177,7 +212,8 @@ router.post('/ocr/question', ...studentOnly, asyncRoute(async (req, res) => {
   const input = questionSchema.parse(req.body)
   const savedImage = await saveLearningImage(req.user!.id, input.imageDataUrl, 'question')
   const context = await knowledgeContext(req.user!.id, input.subject, [])
-  const result = await qwenJson({
+  const result = await aiJson({
+    provider: 'vision',
     model: process.env.QWEN_VISION_MODEL || 'qwen3.7-plus',
     messages: [
       {
@@ -215,7 +251,8 @@ router.post('/ocr/paper', ...studentOnly, asyncRoute(async (req, res) => {
     input.imageDataUrls.map((value) => saveLearningImage(req.user!.id, value, 'paper')),
   )
   const context = await knowledgeContext(req.user!.id, input.subject, [])
-  const result = await qwenJson({
+  const result = await aiJson({
+    provider: 'vision',
     model: process.env.QWEN_VISION_MODEL || 'qwen3.7-plus',
     maxTokens: 20_000,
     messages: [
@@ -248,7 +285,7 @@ router.post('/ocr/paper', ...studentOnly, asyncRoute(async (req, res) => {
       },
     ],
   }) as { questions?: unknown[] }
-  if (!Array.isArray(result.questions)) throw new Error('Qwen 未返回 questions')
+  if (!Array.isArray(result.questions)) throw new Error('视觉模型未返回 questions')
   res.json(result.questions.map((question) => ({ ...(question as Record<string, unknown>), sourceImageKeys: savedImages.map((item) => item.key) })))
 }))
 
@@ -259,8 +296,8 @@ router.post('/ai/explain', ...studentOnly, asyncRoute(async (req, res) => {
     input.subject,
     [input.content.slice(0, 80)],
   )
-  const result = await qwenJson({
-    model: process.env.QWEN_TEXT_MODEL || 'qwen3.7-plus',
+  const result = await aiJson({
+    provider: 'text',
     messages: [
       {
         role: 'system',
@@ -291,19 +328,32 @@ router.post('/ai/explain', ...studentOnly, asyncRoute(async (req, res) => {
 
 router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
   const input = simulationSchema.parse(req.body)
-  const names = input.points.map((point) => point.name)
+  const names = input.points.map((point) => point.name).filter(Boolean)
   const context = await knowledgeContext(req.user!.id, input.subject, names)
-  const result = await qwenJson({
-    model: process.env.QWEN_TEXT_MODEL || 'qwen3.7-plus',
+  const modeLabel = input.mode === 'paper' ? '整套模拟卷' : '专项小练'
+  const formatText = input.formats.join('、')
+  const result = await aiJson({
+    provider: 'text',
+    maxTokens: input.mode === 'paper'
+      ? Math.max(7_000, Math.min(16_000, input.count * 720))
+      : Math.max(3_000, Math.min(9_000, input.count * 680)),
+    enableThinking: false,
+    requestTimeoutMs: 360_000,
     messages: [
       {
         role: 'system',
         content: [
           '你是高中针对性训练题生成器。',
+          '直接生成紧凑 JSON，不输出思考过程，不写额外说明。',
           curriculumPrompt,
           '题目必须来自固定教材范围，并优先依据用户上传教材知识。',
+          '必须严格按照用户选择的题量、题型和难度生成。',
+          input.mode === 'paper'
+            ? '当前为整套模拟卷：题目要有合理顺序，先基础后综合，题型分布尽量均衡。'
+            : '当前为专项小练：围绕所选知识点集中出题，避免无关内容。',
           '只返回 JSON：{"questions":[...]}。',
           '每题字段：id,subject,knowledgePointId,knowledgePointName,content,format,options,correctAnswer,explanation,sourceType。',
+          'format 只能使用用户指定题型；选择题必须返回 options，其他题型 options 可省略。',
           'sourceType 固定 ai_generated。',
           '',
           '可用教材知识：',
@@ -312,17 +362,113 @@ router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
       },
       {
         role: 'user',
-        content: `科目：${input.subject}\n教材：${fixedTextbookVersions[input.subject]}\n知识点：${names.join('、') || '基础知识'}\n题量：${input.count}`,
+        content: [
+          `模式：${modeLabel}`,
+          `科目：${input.subject}`,
+          `教材：${fixedTextbookVersions[input.subject]}`,
+          `知识点：${names.join('、') || '当前章节综合内容'}`,
+          `题量：必须正好 ${input.count} 道`,
+          `允许题型：${formatText}`,
+          `难度：${input.difficulty}`,
+          `建议完成时间：${input.durationMinutes} 分钟`,
+        ].join('\n'),
       },
     ],
   }) as { questions?: Array<Record<string, unknown>> }
-  if (!Array.isArray(result.questions)) throw new Error('Qwen 未返回训练题')
-  res.json(result.questions.map((question) => ({
-    ...question,
-    id: String(question.id || randomUUID()),
-    subject: input.subject,
-    sourceType: 'ai_generated',
-  })))
+  if (!Array.isArray(result.questions)) throw new Error('文本模型未返回训练题')
+  const allowedFormats = new Set<string>(input.formats)
+  const questions = result.questions.slice(0, input.count).map((question, index) => {
+    const fallbackFormat = input.formats[index % input.formats.length] ?? '解答题'
+    const rawFormat = String(question.format || fallbackFormat)
+    const format = allowedFormats.has(rawFormat) ? rawFormat : fallbackFormat
+    const options = format === '选择题' && !Array.isArray(question.options)
+      ? ['A. 待模型补充', 'B. 待模型补充', 'C. 待模型补充', 'D. 待模型补充']
+      : question.options
+    return {
+      ...question,
+      id: String(question.id || randomUUID()),
+      subject: input.subject,
+      format,
+      options,
+      sourceType: 'ai_generated',
+    }
+  })
+  if (questions.length !== input.count) {
+    throw new Error(`文本模型只返回 ${questions.length} 道题，未达到要求的 ${input.count} 道`)
+  }
+  res.json(questions)
+}))
+
+router.post('/ai/study-cycle', ...studentOnly, asyncRoute(async (req, res) => {
+  const input = studyCycleSchema.parse(req.body)
+  const keywords = [input.chapter, input.knowledgePoint].filter(Boolean)
+  const context = await knowledgeContext(req.user!.id, input.subject, keywords)
+  const modeLabel = input.mode === 'preview' ? '预习' : '复习'
+  const result = await aiJson({
+    provider: 'text',
+    maxTokens: input.depth === '深入' ? 10_000 : input.depth === '标准' ? 7_500 : 5_000,
+    enableThinking: false,
+    requestTimeoutMs: 300_000,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          `你是家庭高中学习系统的${modeLabel}教练。`,
+          curriculumPrompt,
+          '优先依据家庭上传教材知识，内容必须适合学生在给定时间内完成。',
+          input.mode === 'preview'
+            ? '预习必须帮助学生建立章节框架、识别新概念、带着问题听课，不要提前堆砌难题。'
+            : '复习必须先回忆、再订正、最后用小测验证，优先处理错题和遗忘风险。',
+          '只返回 JSON 对象，字段：title,summary,objectives,keyPoints,steps,selfCheck,nextAction。',
+          'objectives 是 2—4 个字符串。',
+          'keyPoints 是 2—5 个 {title,content}。',
+          'steps 是 3—6 个 {title,content,minutes}，minutes 总和尽量等于用户给定时间。',
+          'selfCheck 是 2—4 道题，每题字段 id,subject,knowledgePointId,knowledgePointName,content,format,options,correctAnswer,explanation,sourceType。',
+          'selfCheck 的 sourceType 固定 ai_generated。',
+          '',
+          '可用教材知识：',
+          context,
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: [
+          `模式：${modeLabel}`,
+          `科目：${input.subject}`,
+          `教材：${fixedTextbookVersions[input.subject]}`,
+          `章节：${input.chapter || '未指定'}`,
+          `知识点：${input.knowledgePoint || '未指定'}`,
+          `可用时间：${input.duration} 分钟`,
+          `深度：${input.depth}`,
+        ].join('\n'),
+      },
+    ],
+  }) as Record<string, unknown>
+
+  const selfCheck = Array.isArray(result.selfCheck)
+    ? result.selfCheck.slice(0, 4).map((question, index) => {
+      const item = question as Record<string, unknown>
+      return {
+        ...item,
+        id: String(item.id || randomUUID()),
+        subject: input.subject,
+        knowledgePointId: String(item.knowledgePointId || `study-${index + 1}`),
+        knowledgePointName: String(item.knowledgePointName || input.knowledgePoint || input.chapter || '本次学习重点'),
+        format: String(item.format || '解答题'),
+        sourceType: 'ai_generated',
+      }
+    })
+    : []
+
+  res.json({
+    title: String(result.title || `${input.subject}${modeLabel}单`),
+    summary: String(result.summary || ''),
+    objectives: Array.isArray(result.objectives) ? result.objectives.map(String).slice(0, 4) : [],
+    keyPoints: Array.isArray(result.keyPoints) ? result.keyPoints.slice(0, 5) : [],
+    steps: Array.isArray(result.steps) ? result.steps.slice(0, 6) : [],
+    selfCheck,
+    nextAction: String(result.nextAction || '完成后进入模拟训练，用一组小题验证掌握情况。'),
+  })
 }))
 
 export const qwenLearningRouter = router
