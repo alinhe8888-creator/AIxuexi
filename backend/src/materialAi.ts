@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { curriculumPrompt, getBookById, isSupportedSubject, matchBook, type SupportedSubject } from './curriculum.js'
+import { config } from './config.js'
 
 const env = (name: string, fallback = '') => (process.env[name] ?? fallback).trim()
 const normalizeBase = (value: string) => value.replace(/\/+$/, '')
-const timeoutMs = Math.max(30_000, Number(env('AI_TIMEOUT_MS', '180000')))
+const timeoutMs = config.aiTimeoutMs
 
 export type KnowledgeItemPayload = {
   id: string
   subject: SupportedSubject
-  grade: '高一' | '高二' | '高三'
+  grade: '' | '高一' | '高二' | '高三'
   chapter: string
   knowledgePoint: string
   questionType: '选择题' | '填空题' | '判断题' | '解答题' | '默写题'
@@ -217,18 +218,17 @@ function normalizeKnowledgeRows(
       ? (value as Record<string, unknown>).items as unknown[]
       : []
   const createdAt = new Date().toISOString()
-  const hintedSubject = context.subjectHint && isSupportedSubject(context.subjectHint)
-    ? context.subjectHint
-    : undefined
   const selectedBook = context.bookId ? getBookById(context.bookId) : undefined
-  const inferredBook = selectedBook || (hintedSubject ? matchBook(hintedSubject, `${context.fileName} ${context.sourcePath} ${context.bookTitle || ''}`) : undefined)
 
   return raw.flatMap((item) => {
     if (!item || typeof item !== 'object') return []
     const row = item as Record<string, unknown>
-    const candidate = String(row.subject || context.subjectHint || '').trim()
+    const rawCandidate = String(selectedBook?.subject || row.subject || context.subjectHint || '').trim()
+    const candidate = rawCandidate === '思想政治' ? '政治' : rawCandidate
     if (!isSupportedSubject(candidate)) return []
-    const gradeCandidate = String(row.grade || context.gradeHint || '高二').trim()
+    const inferredBook = selectedBook || matchBook(candidate, `${context.fileName} ${context.sourcePath} ${context.bookTitle || ''} ${String(row.title || '')} ${String(row.chapter || '')}`)
+    const inferredGrade = inferredBook?.grade === '跨年级' ? undefined : inferredBook?.grade
+    const gradeCandidate = String(row.grade || context.gradeHint || inferredGrade || '').trim()
     const title = String(row.title || row.knowledgePoint || '').trim()
     const content = String(row.content || row.definition || row.summary || '').trim()
     if (!title || !content) return []
@@ -236,7 +236,7 @@ function normalizeKnowledgeRows(
     return [{
       id: randomUUID(),
       subject: candidate,
-      grade: (supportedGrades.has(gradeCandidate) ? gradeCandidate : '高二') as KnowledgeItemPayload['grade'],
+      grade: (supportedGrades.has(gradeCandidate) ? gradeCandidate : '') as KnowledgeItemPayload['grade'],
       chapter: String(row.chapter || '未分类章节').trim().slice(0, 120),
       knowledgePoint: String(row.knowledgePoint || title).trim().slice(0, 120),
       questionType: (
@@ -251,8 +251,8 @@ function normalizeKnowledgeRows(
       explanation: String(row.explanation || row.easyExplanation || '').trim().slice(0, 8000),
       tags: normalizeList(row.tags, 12),
       materialId: context.materialId,
-      bookId: context.bookId || inferredBook?.id,
-      bookTitle: context.bookTitle || inferredBook?.title,
+      bookId: selectedBook?.id || inferredBook?.id,
+      bookTitle: selectedBook?.title || inferredBook?.title || context.bookTitle,
       resourceKind: context.resourceKind || 'textbook',
       sourceName: context.sourceName || '家庭上传资料',
       sourceFile: context.fileName,

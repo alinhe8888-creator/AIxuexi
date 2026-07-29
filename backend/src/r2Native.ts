@@ -1,22 +1,31 @@
 import { createHmac, createHash, randomUUID } from 'node:crypto'
 
 const env = (name: string, fallback = '') => (process.env[name] ?? fallback).trim()
+
+function boundedNumber(name: string, fallback: number, minimum: number, maximum: number) {
+  const value = Number(env(name, String(fallback)))
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be between ${minimum} and ${maximum}`)
+  }
+  return value
+}
+
 const endpointValue = env('R2_ENDPOINT_HOST', env('R2_ENDPOINT'))
 const endpointHostFromValue = (() => {
   if (!endpointValue) return ''
-  try {
-    return new URL(endpointValue.includes('://') ? endpointValue : `https://${endpointValue}`).host
-  } catch {
-    return endpointValue.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const url = new URL(endpointValue.includes('://') ? endpointValue : `https://${endpointValue}`)
+  if (url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
+    throw new Error('R2_ENDPOINT_HOST must be an HTTPS hostname without path, query or credentials')
   }
+  return url.host
 })()
 const accountId = env('R2_ACCOUNT_ID')
 const accessKeyId = env('R2_ACCESS_KEY_ID', env('R2_ACCESS_KEY'))
 const secretAccessKey = env('R2_SECRET_ACCESS_KEY', env('R2_SECRET_KEY'))
 const bucket = env('R2_BUCKET_NAME', env('R2_BUCKET'))
 const endpointHost = endpointHostFromValue || (accountId ? `${accountId}.r2.cloudflarestorage.com` : '')
-const expiresSeconds = Math.min(3600, Math.max(60, Number(env('R2_PRESIGN_SECONDS', '900'))))
-const maxZipBytes = Math.max(5, Number(env('MATERIAL_MAX_ZIP_MB', '100'))) * 1024 * 1024
+const expiresSeconds = Math.trunc(boundedNumber('R2_PRESIGN_SECONDS', 900, 60, 3600))
+const maxZipBytes = Math.trunc(boundedNumber('MATERIAL_MAX_ZIP_MB', 100, 5, 2_000)) * 1024 * 1024
 
 const awsEncode = (value: string) => encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
 const sha256 = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex')

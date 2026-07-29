@@ -48,7 +48,7 @@ export function ParentSettingsPage() {
         ) : loading ? (
           <EmptyState title="正在连接学习档案" description="通常几秒内完成，无需输入任何验证码。" />
         ) : (
-          <EmptyState title="暂未找到学习档案" description="请确认 Render 已配置 FAMILY_STUDENT_EMAIL。" />
+          <EmptyState title="暂未找到学习档案" description="请确认服务端已配置固定学生邮箱并完成家庭绑定。" />
         )}
 
         {error && (

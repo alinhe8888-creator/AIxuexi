@@ -1,7 +1,7 @@
 {
   "name": "aixuexi-separated-portals",
   "private": true,
-  "version": "5.0.0-final",
+  "version": "6.0.0-production",
   "type": "module",
   "scripts": {
     "dev": "vite --mode student",
@@ -15,9 +15,11 @@
     "build:all": "npm run build:student && npm run build:parent",
     "preview:student": "vite preview --outDir dist-student",
     "preview:parent": "vite preview --outDir dist-parent",
-    "check": "npm run lint && npm run typecheck && npm run build:all && npm run verify:routes && npm --prefix backend run typecheck && npm --prefix backend run build && npm --prefix backend run test:api",
+    "check": "npm run test:source && npm run lint && npm run typecheck && npm run verify:ui && npm run build:all && npm run verify:routes && npm --prefix backend run typecheck && npm --prefix backend run build && npm --prefix backend run test:api",
     "test:api": "npm --prefix backend run test:api",
-    "verify:routes": "node scripts/verify-routes.mjs"
+    "verify:routes": "node scripts/verify-routes.mjs",
+    "test:source": "node --experimental-strip-types scripts/verify-source.mjs",
+    "verify:ui": "node scripts/verify-ui.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",

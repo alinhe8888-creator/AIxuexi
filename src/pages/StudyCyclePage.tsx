@@ -226,14 +226,14 @@ export function StudyCyclePage() {
           <h1>预习与复习</h1>
           <p>系统会优先读取对应书册和章节的家庭知识库，也允许手动补充学习目标。</p>
         </div>
-        <button className="family-secondary-button" onClick={() => navigate('/daily-plan')}>返回今日计划</button>
+        <button type="button" className="family-secondary-button" onClick={() => navigate('/daily-plan')}>返回今日计划</button>
       </header>
 
       <div className="cycle-mode-switch" role="tablist" aria-label="学习模式">
-        <button className={mode === 'preview' ? 'active' : ''} onClick={() => { setMode('preview'); setResult(null) }}>
+        <button type="button" className={mode === 'preview' ? 'active' : ''} onClick={() => { setMode('preview'); setResult(null) }}>
           <BookOpen size={21} /><span><strong>预习</strong><small>先搭章节框架，再带着问题听课</small></span>
         </button>
-        <button className={mode === 'review' ? 'active' : ''} onClick={() => { setMode('review'); setResult(null) }}>
+        <button type="button" className={mode === 'review' ? 'active' : ''} onClick={() => { setMode('review'); setResult(null) }}>
           <RefreshCcw size={21} /><span><strong>复习</strong><small>回忆、订正、再验证</small></span>
         </button>
       </div>
@@ -281,12 +281,12 @@ export function StudyCyclePage() {
         </div>
 
         <div className="cycle-option-row">
-          <div><span>时间</span><div className="option-pills">{durations.map((item) => <button key={item} className={duration === item ? 'active' : ''} onClick={() => setDuration(item)}>{item} 分钟</button>)}</div></div>
-          <div><span>深度</span><div className="option-pills">{depths.map((item) => <button key={item} className={depth === item ? 'active' : ''} onClick={() => setDepth(item)}>{item}</button>)}</div></div>
+          <div><span>时间</span><div className="option-pills">{durations.map((item) => <button type="button" key={item} className={duration === item ? 'active' : ''} onClick={() => setDuration(item)}>{item} 分钟</button>)}</div></div>
+          <div><span>深度</span><div className="option-pills">{depths.map((item) => <button type="button" key={item} className={depth === item ? 'active' : ''} onClick={() => setDepth(item)}>{item}</button>)}</div></div>
         </div>
 
         {error && <div className="family-error">{error}</div>}
-        <button className="family-generate-button" disabled={loading || !selectedBook || !resolvedChapter} onClick={generate}>
+        <button type="button" className="family-generate-button" disabled={loading || !selectedBook || !resolvedChapter} onClick={generate}>
           {loading ? <><LoaderCircle className="spin" size={19} /> AI 正在按书册与章节生成</> : <><Sparkles size={19} /> 生成{mode === 'preview' ? '预习单' : '复习单'}</>}
         </button>
       </section>
@@ -306,15 +306,15 @@ export function StudyCyclePage() {
             <div className="cycle-section-title"><div><h3>完成后自测</h3><p>先独立回答，系统批改后错误题进入错题本分步订正，不直接显示答案。</p></div>{checked && <span><CheckCircle2 size={16} /> 已核对</span>}</div>
             {result.selfCheck.map((question, index) => {
               const grade = selfGrades[question.id]
-              return <article key={question.id || index} className={checked ? (grade?.correct ? 'is-correct' : 'is-wrong') : ''}><strong>{index + 1}. {question.content}</strong>{question.options?.length ? <div className="simulation-options">{question.options.map((option) => <label key={option}><input type="radio" name={`cycle-${question.id}`} disabled={checked} checked={answers[question.id] === option} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option }))} />{option}</label>)}</div> : <input disabled={checked} value={answers[question.id] || ''} onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))} placeholder="写下你的答案" />}{checked && grade && <div className={`cycle-answer cycle-answer--adaptive ${grade.correct ? 'correct' : 'wrong'}`}><b>{grade.correct ? `回答正确 · ${grade.score} 分` : `需要订正 · ${grade.score} 分`}</b><span>{grade.feedback}</span>{!grade.correct && <button onClick={() => navigate('/mistakes')}>去错题本分步订正</button>}</div>}</article>
+              return <article key={question.id || index} className={checked ? (grade?.correct ? 'is-correct' : 'is-wrong') : ''}><strong>{index + 1}. {question.content}</strong>{question.options?.length ? <div className="simulation-options">{question.options.map((option) => <label key={option}><input type="radio" name={`cycle-${question.id}`} disabled={checked} checked={answers[question.id] === option} onChange={() => setAnswers((current) => ({ ...current, [question.id]: option }))} />{option}</label>)}</div> : <input disabled={checked} value={answers[question.id] || ''} onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))} placeholder="写下你的答案" />}{checked && grade && <div className={`cycle-answer cycle-answer--adaptive ${grade.correct ? 'correct' : 'wrong'}`}><b>{grade.correct ? `回答正确 · ${grade.score} 分` : `需要订正 · ${grade.score} 分`}</b><span>{grade.feedback}</span>{!grade.correct && <button type="button" onClick={() => navigate('/mistakes')}>去错题本分步订正</button>}</div>}</article>
             })}
-            <button className="family-secondary-button" disabled={checkingAnswers || checked} onClick={() => void checkSelfTest()}>{checkingAnswers ? <><LoaderCircle className="spin" size={16} />正在批改…</> : checked ? '已完成批改' : '提交批改（错误题不显示答案）'}</button>
+            <button type="button" className="family-secondary-button" disabled={checkingAnswers || checked} onClick={() => void checkSelfTest()}>{checkingAnswers ? <><LoaderCircle className="spin" size={16} />正在批改…</> : checked ? '已完成批改' : '提交批改（错误题不显示答案）'}</button>
           </div>
-          <div className="cycle-next-action"><ChevronRight size={20} /><div><strong>下一步</strong><span>{result.nextAction}</span></div><button onClick={() => navigate('/simulation')}>去出题验证</button></div>
+          <div className="cycle-next-action"><ChevronRight size={20} /><div><strong>下一步</strong><span>{result.nextAction}</span></div><button type="button" onClick={() => navigate('/simulation')}>去出题验证</button></div>
         </section>
       )}
 
-      {sessions.length > 0 && <section className="cycle-history"><div className="cycle-section-title"><div><h2>最近生成</h2><p>切换页面后仍会保留。</p></div><RotateCcw size={19} /></div><div className="cycle-history-grid">{sessions.slice(0, 6).map((session) => <article key={session.id}><button className="cycle-history-open" onClick={() => openSession(session)}><span>{session.mode === 'preview' ? '预习' : '复习'}</span><strong>{session.result.title}</strong><small>{session.bookTitle || session.subject} · {session.duration} 分钟</small></button><button className="cycle-history-delete" aria-label="删除记录" onClick={() => setSessions(deleteStudySession(session.id))}><Trash2 size={15} /></button></article>)}</div></section>}
+      {sessions.length > 0 && <section className="cycle-history"><div className="cycle-section-title"><div><h2>最近生成</h2><p>切换页面后仍会保留。</p></div><RotateCcw size={19} /></div><div className="cycle-history-grid">{sessions.slice(0, 6).map((session) => <article key={session.id}><button type="button" className="cycle-history-open" onClick={() => openSession(session)}><span>{session.mode === 'preview' ? '预习' : '复习'}</span><strong>{session.result.title}</strong><small>{session.bookTitle || session.subject} · {session.duration} 分钟</small></button><button type="button" className="cycle-history-delete" aria-label="删除记录" onClick={() => setSessions(deleteStudySession(session.id))}><Trash2 size={15} /></button></article>)}</div></section>}
     </div>
   )
 }

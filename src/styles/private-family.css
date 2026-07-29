@@ -105,3 +105,16 @@
   .donut-breakdown { grid-template-columns:1fr; justify-items:center; }
   .chart-legend { width:100%; }
 }
+
+.parent-donut-row--single {
+  justify-content: center;
+  min-height: 190px;
+  align-items: center;
+}
+.chart-empty-state {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

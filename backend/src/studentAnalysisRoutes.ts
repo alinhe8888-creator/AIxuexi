@@ -1,12 +1,13 @@
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole, type AuthenticatedRequest } from './auth.js'
+import { config } from './config.js'
 import { curriculumPrompt } from './curriculum.js'
 import { store } from './store.js'
 
 const router = Router()
 const studentOnly = [requireAuth, requireRole('student')] as const
-const timeoutMs = Math.max(30_000, Number(process.env.AI_TIMEOUT_MS || 180_000))
+const timeoutMs = config.aiTimeoutMs
 
 const analysisSchema = z.object({
   summary: z.string().min(1),

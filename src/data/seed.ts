@@ -4,18 +4,18 @@ import { FIXED_SUBJECTS, FIXED_TEXTBOOK_VERSIONS } from '../config/curriculum'
 export function createSeedState(): AppState {
   const now = new Date().toISOString()
   return {
-    version: 5,
+    version: 6,
     profile: {
-      id: 'private-student-profile',
-      name: '同学',
-      grade: '高二',
+      id: '',
+      name: '',
+      grade: '',
       selectedSubjects: [...FIXED_SUBJECTS] as Subject[],
       textbookVersions: { ...FIXED_TEXTBOOK_VERSIONS },
       currentChapters: {},
       currentScoreRange: '',
       dailyMinutes: 90,
       learningGoal: '',
-      onboarded: true,
+      onboarded: false,
       createdAt: now,
       updatedAt: now,
     },
@@ -36,7 +36,7 @@ export function createSeedState(): AppState {
       dailyReminder: false,
       reminderTime: '20:00',
       autoAddMistakes: true,
-      dataVersion: 5,
+      dataVersion: 6,
       answerRevealAttempts: 2,
       adaptiveExplanation: true,
       saveEffectiveMethods: true,

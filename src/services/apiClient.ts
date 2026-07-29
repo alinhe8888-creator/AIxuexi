@@ -2,8 +2,6 @@ import type { UserRole } from '../types'
 
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
 export const API_BASE_URL = rawBaseUrl?.replace(/\/$/, '') || ''
-export const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API !== 'false'
-export const ALLOW_API_FALLBACK = import.meta.env.VITE_ALLOW_API_FALLBACK !== 'false'
 export const PORTAL_ROLE: UserRole = import.meta.env.VITE_PORTAL_ROLE === 'parent' ? 'parent' : 'student'
 export const AUTH_TOKEN_KEY = `aixuexi:${PORTAL_ROLE}:auth-token`
 

@@ -7,6 +7,7 @@ const requiredFiles = [
   'src/ParentPortal.tsx',
   'src/config/curriculum.ts',
   'src/pages/KnowledgeBasePage.tsx',
+  'scripts/verify-source.mjs',
   'src/pages/StudyCyclePage.tsx',
   'src/pages/SimulationPage.tsx',
   'src/components/Charts.tsx',
@@ -59,10 +60,21 @@ for (const route of [
   '/materials/upload',
   '/materials/imports',
   '/materials/remote-imports',
+  '/materials/imports/:id/binding',
+  '/materials/imports/:id/retry',
   '/knowledge',
 ]) {
   if (!material.includes(route)) throw new Error(`资料接口缺失：${route}`)
 }
+
+
+if (fs.existsSync('src/services/mockApi.ts')) throw new Error('正式版仍包含 Mock 服务文件')
+for (const marker of ['USE_MOCK_API', 'ALLOW_API_FALLBACK']) {
+  for (const file of ['src/services/apiClient.ts', 'src/services/authApi.ts', 'src/services/studentApi.ts', 'src/services/learningApi.ts']) {
+    if (fs.readFileSync(file, 'utf8').includes(marker)) throw new Error(`正式版仍包含 ${marker}：${file}`)
+  }
+}
+if (!material.includes("res.status(405)")) throw new Error('一键清空教材接口未关闭')
 
 for (const route of [
   '/ocr/question',
@@ -106,4 +118,4 @@ for (const output of ['dist-student', 'dist-parent']) {
   if (!assets.length) throw new Error(`${output} 没有 JS 构建产物`)
 }
 
-console.log('✅ 双端路由、教材知识库、预习复习、三种训练、答案保护、自适应订正、方法画像、家长图表和构建产物检查通过')
+console.log('✅ 双端路由、34 册教材知识库、手动绑定与重解析、预习复习、训练、答案保护、家长真实图表和构建产物检查通过')

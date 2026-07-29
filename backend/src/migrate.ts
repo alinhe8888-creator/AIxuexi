@@ -1,7 +1,7 @@
 import { config } from './config.js'
 import { pool } from './db.js'
 
-const statements = [
+const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -32,6 +32,10 @@ const statements = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY(student_user_id,record_type,record_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS app_migrations (
+    migration_key TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
   `DROP TABLE IF EXISTS pair_codes`,
   `CREATE INDEX IF NOT EXISTS idx_parent_links_parent
    ON parent_student_links(parent_user_id)`,
@@ -41,13 +45,40 @@ const statements = [
    ON student_records(student_user_id,record_type,updated_at DESC)`,
 ]
 
+const formalLaunchResetKey = '2026-07-28-formal-launch-reset-v1'
+
 if (config.useMemoryDb) {
   console.log('DB_MODE=memory: migrations are not required.')
 } else if (pool) {
+  const client = await pool.connect()
   try {
-    for (const statement of statements) await pool.query(statement)
+    await client.query('BEGIN')
+    for (const statement of schemaStatements) await client.query(statement)
+
+    const applied = await client.query<{ migration_key: string }>(
+      'SELECT migration_key FROM app_migrations WHERE migration_key=$1',
+      [formalLaunchResetKey],
+    )
+    if (!applied.rowCount) {
+      await client.query('DELETE FROM student_snapshots')
+      await client.query(
+        `DELETE FROM student_records
+         WHERE record_type NOT IN ('material-imports','knowledge-items')`,
+      )
+      await client.query(
+        'INSERT INTO app_migrations(migration_key) VALUES($1)',
+        [formalLaunchResetKey],
+      )
+      console.log('Formal launch reset applied: learning history and profile snapshots cleared; accounts, family links and material records preserved.')
+    }
+
+    await client.query('COMMIT')
     console.log('Private-family database migrations completed successfully.')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
   } finally {
+    client.release()
     await pool.end()
   }
 }

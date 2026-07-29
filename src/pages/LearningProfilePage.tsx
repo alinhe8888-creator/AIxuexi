@@ -162,14 +162,14 @@ export function LearningProfilePage() {
         <div className="profile-assessment-heading">
           <div className="profile-assessment-icon"><Sparkles size={23} /></div>
           <div><Badge tone="primary">画像小测</Badge><h2>{assessment ? '你的学习方式画像' : '用 8 道小题补全画像'}</h2><p>没有标准答案，只需要选择最像自己的情况。结果不会替代真实学习数据，只用于优化任务长度和学习顺序。</p></div>
-          {assessment && <button className="family-secondary-button" onClick={restartAssessment}><RotateCcw size={16} /> 重新测试</button>}
+          {assessment && <button type="button" className="family-secondary-button" onClick={restartAssessment}><RotateCcw size={16} /> 重新测试</button>}
         </div>
 
         {assessmentOpen && currentQuestion ? (
           <div className="profile-assessment-test">
             <div className="assessment-progress"><span style={{ width: `${((assessmentStep + 1) / assessmentQuestions.length) * 100}%` }} /><em>{assessmentStep + 1}/{assessmentQuestions.length}</em></div>
             <h3>{currentQuestion.text}</h3>
-            <div className="assessment-options">{optionLabels.map((label, index) => <button key={label} onClick={() => answerAssessment(index + 1)}><strong>{index + 1}</strong><span>{label}</span></button>)}</div>
+            <div className="assessment-options">{optionLabels.map((label, index) => <button type="button" key={label} onClick={() => answerAssessment(index + 1)}><strong>{index + 1}</strong><span>{label}</span></button>)}</div>
           </div>
         ) : assessment ? (
           <div className="profile-assessment-result">
@@ -229,7 +229,7 @@ export function LearningProfilePage() {
           <Card><SectionTitle title="近 14 天学习习惯" description="画像不仅看分数，也看计划是否真正执行" /><div className="profile-habit-grid"><div><CalendarCheck2 size={20} /><strong>{profile.planCompletion14}%</strong><span>计划完成率</span></div><div><Activity size={20} /><strong>{profile.activeDays14}/14</strong><span>活跃天数</span></div><div><Clock3 size={20} /><strong>{profile.mistakeReviewRate}%</strong><span>错题闭环率</span></div><div><TrendingUp size={20} /><strong>{profile.habitScore}%</strong><span>学习习惯状态</span></div></div></Card>
         </div>
         <div className="stack">
-          <Card><SectionTitle title="各科表现" description="综合状态、证据量与到期复习一起看" />{profile.subjects.length ? <div className="subject-profile-list evidence-subject-list">{profile.subjects.map((item) => <button key={item.subject} onClick={() => setSelectedSubject(item.subject)}><div><strong>{item.subject}</strong><span>正确率 {item.accuracy}% · 证据 {item.evidenceCount} 条 · 到期 {item.dueCount}</span></div><div><ProgressBar value={item.score} compact /><em>{item.score}%</em></div></button>)}</div> : <EmptyState title="暂无科目数据" description="有学习记录后显示。" />}</Card>
+          <Card><SectionTitle title="各科表现" description="综合状态、证据量与到期复习一起看" />{profile.subjects.length ? <div className="subject-profile-list evidence-subject-list">{profile.subjects.map((item) => <button type="button" key={item.subject} onClick={() => setSelectedSubject(item.subject)}><div><strong>{item.subject}</strong><span>正确率 {item.accuracy}% · 证据 {item.evidenceCount} 条 · 到期 {item.dueCount}</span></div><div><ProgressBar value={item.score} compact /><em>{item.score}%</em></div></button>)}</div> : <EmptyState title="暂无科目数据" description="有学习记录后显示。" />}</Card>
           <Card><SectionTitle title="结果交叉验证" description="不同任务结果一致时，结论才更可靠" /><div className="profile-validation-list"><div><span>最近小测平均</span><strong>{profile.quizAverage === null ? '暂无' : `${profile.quizAverage}%`}</strong></div><div><span>最近试卷平均</span><strong>{profile.paperAverage === null ? '暂无' : `${profile.paperAverage}%`}</strong></div><div><span>知识状态</span><strong>{profile.academicScore}%</strong></div><div><span>整体画像置信度</span><strong>{profile.confidence}%</strong></div></div></Card>
           <Card><SectionTitle title="最常见错误原因" description="找出反复出错的过程" />{profile.causes.length ? <BarList items={profile.causes} /> : <EmptyState title="暂无错因数据" description="完成错题分析后显示。" />}</Card>
           <Card className="next-step-card"><Badge tone="primary">下一步行动</Badge><h3>先验证，再补弱，最后扩展新内容</h3><ol>{(assessment?.recommendations || profile.recommendations).slice(0, 4).map((item) => <li key={item}>{item}</li>)}</ol></Card>

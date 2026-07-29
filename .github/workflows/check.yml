@@ -17,8 +17,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm --prefix backend ci
+      - run: npm run test:source
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run verify:ui
       - run: npm run build:all
       - run: npm run verify:routes
       - run: npm --prefix backend run typecheck

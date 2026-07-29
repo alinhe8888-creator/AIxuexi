@@ -19,6 +19,20 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         sync: false
+      - key: DB_MODE
+        value: postgres
+      - key: FAMILY_STUDENT_EMAIL
+        sync: false
+      - key: FAMILY_STUDENT_PASSWORD
+        sync: false
+      - key: FAMILY_STUDENT_NAME
+        sync: false
+      - key: FAMILY_PARENT_EMAIL
+        sync: false
+      - key: FAMILY_PARENT_PASSWORD
+        sync: false
+      - key: FAMILY_PARENT_NAME
+        sync: false
       - key: AI_TIMEOUT_MS
         value: 300000
       - key: QWEN_API_KEY
@@ -46,6 +60,8 @@ services:
       - key: R2_SECRET_ACCESS_KEY
         sync: false
       - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_ENDPOINT_HOST
         sync: false
       - key: R2_PUBLIC_BASE_URL
         sync: false

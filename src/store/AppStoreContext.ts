@@ -30,6 +30,10 @@ export interface CompleteQuizResult {
 export interface AppStoreValue {
   state: AppState
   toasts: ToastMessage[]
+  syncStatus: 'idle' | 'loading' | 'synced' | 'error'
+  lastSyncedAt: string | null
+  syncError: string
+  syncNow: () => Promise<void>
   updateProfile: (profile: Partial<StudentProfile>) => void
   updateSettings: (settings: Partial<AppSettings>) => void
   saveMistake: (input: SaveMistakeInput) => string

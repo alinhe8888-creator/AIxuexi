@@ -137,9 +137,13 @@ export const materialApi = {
       body: JSON.stringify({ ...input, resourceKind: input.resourceKind || 'textbook' }),
     })).import,
 
+  bindBook: async (id: string, bookId: string) => (await apiRequest<{ import: MaterialImportJob; updatedKnowledge: number }>(`/api/materials/imports/${id}/binding`, {
+    method: 'PATCH',
+    body: JSON.stringify({ bookId }),
+  })).import,
+
   retry: async (id: string) => (await apiRequest<{ import: MaterialImportJob }>(`/api/materials/imports/${id}/retry`, { method: 'POST' })).import,
 
   remove: (id: string) => apiRequest<{ ok: boolean }>(`/api/materials/imports/${id}`, { method: 'DELETE' }),
 
-  clearAll: () => apiRequest<{ ok: boolean; removedImports: number; removedKnowledge: number }>('/api/materials', { method: 'DELETE' }),
 }

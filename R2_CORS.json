@@ -1,6 +1,7 @@
 [
   {
     "AllowedOrigins": [
+      "https://aixuexi.pages.dev",
       "https://aixuexi-29x.pages.dev",
       "https://aixuexi-parent.pages.dev",
       "http://localhost:5173"

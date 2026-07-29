@@ -85,7 +85,7 @@ export function QuizRunner({ questions, title, onSubmit, submitLabel = '提交�
               const selectedCorrect = submitted && selected && option === current.correctAnswer
               const selectedWrong = submitted && selected && option !== current.correctAnswer
               return (
-                <button
+                <button type="button"
                   key={option}
                   className={`${selected ? 'selected' : ''} ${selectedCorrect ? 'correct' : ''} ${selectedWrong ? 'wrong' : ''}`}
                   onClick={() => choose(option)}
@@ -129,7 +129,7 @@ export function QuizRunner({ questions, title, onSubmit, submitLabel = '提交�
         </Button>
         <div className="question-dots">
           {questions.map((question, dotIndex) => (
-            <button
+            <button type="button"
               key={question.id}
               className={`${dotIndex === index ? 'active' : ''} ${answers[question.id] ? 'answered' : ''}`}
               onClick={() => setIndex(dotIndex)}

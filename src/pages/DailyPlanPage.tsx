@@ -139,7 +139,7 @@ export function DailyPlanPage() {
           <h1>今日计划</h1>
           <p>把预习、复习和训练排成一条线，完成一项再进入下一项。{assessment ? ` 已按“${assessment.rhythm}”画像调整任务长度。` : ''}</p>
         </div>
-        <button className="family-primary-button" onClick={() => navigate('/study-cycle')}>
+        <button type="button" className="family-primary-button" onClick={() => navigate('/study-cycle')}>
           生成预习/复习 <ChevronRight size={17} />
         </button>
       </header>
@@ -166,7 +166,7 @@ export function DailyPlanPage() {
           const Icon = meta.icon
           return (
             <article key={item.id} className={item.completed ? 'plan-task is-completed' : 'plan-task'}>
-              <button className="plan-task-check" onClick={() => toggle(item.id)} aria-label={item.completed ? '标记未完成' : '标记完成'}>
+              <button type="button" className="plan-task-check" onClick={() => toggle(item.id)} aria-label={item.completed ? '标记未完成' : '标记完成'}>
                 {item.completed ? <Check size={17} /> : <span>{index + 1}</span>}
               </button>
               <div className={`plan-task-icon plan-task-icon--${item.kind}`}><Icon size={20} /></div>
@@ -175,20 +175,20 @@ export function DailyPlanPage() {
                 <h3>{item.title}</h3>
                 <p>{item.description}</p>
               </div>
-              <button className="plan-task-enter" onClick={() => navigate(item.route)}>开始 <ChevronRight size={16} /></button>
+              <button type="button" className="plan-task-enter" onClick={() => navigate(item.route)}>开始 <ChevronRight size={16} /></button>
             </article>
           )
         })}
       </section>
 
       <section className="plan-quick-grid">
-        <button onClick={() => navigate('/study-cycle', { state: { mode: 'preview' } })}>
+        <button type="button" onClick={() => navigate('/study-cycle', { state: { mode: 'preview' } })}>
           <BookOpen size={22} /><strong>生成预习</strong><span>围绕下一章节建立框架</span>
         </button>
-        <button onClick={() => navigate('/study-cycle', { state: { mode: 'review' } })}>
+        <button type="button" onClick={() => navigate('/study-cycle', { state: { mode: 'review' } })}>
           <RefreshCcw size={22} /><strong>安排复习</strong><span>优先处理错题和遗忘风险</span>
         </button>
-        <button onClick={() => navigate('/simulation')}>
+        <button type="button" onClick={() => navigate('/simulation')}>
           <ClipboardCheck size={22} /><strong>出一组题</strong><span>整卷或 3—10 道专项题</span>
         </button>
       </section>

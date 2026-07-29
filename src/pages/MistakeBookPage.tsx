@@ -139,7 +139,7 @@ export function MistakeBookPage() {
                 </div>
                 <span className="mistake-date">错误于 {formatDate(mistake.wrongAt)}</span>
               </div>
-              <button className="mistake-question" onClick={() => openMistake(mistake)}>{mistake.originalQuestion}</button>
+              <button type="button" className="mistake-question" onClick={() => openMistake(mistake)}>{mistake.originalQuestion}</button>
               <div className="mistake-info-grid">
                 <div><span>知识点</span><strong>{mistake.knowledgePointName}</strong></div>
                 <div><span>主要错因</span><strong>{mistake.primaryCause}</strong></div>
@@ -159,7 +159,7 @@ export function MistakeBookPage() {
         <div className="stack">
           <Card>
             <SectionTitle title="按科目分布" />
-            <div className="subject-count-list">{subjectCounts.map((item) => <button key={item.subject} onClick={() => setSubject(item.subject)}><span>{item.subject}</span><strong>{item.count}</strong></button>)}</div>
+            <div className="subject-count-list">{subjectCounts.map((item) => <button type="button" key={item.subject} onClick={() => setSubject(item.subject)}><span>{item.subject}</span><strong>{item.count}</strong></button>)}</div>
           </Card>
           <Card>
             <SectionTitle title="常见错因" description="帮助发现比知识点更深层的问题" />

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createSeedState } from '../data/seed'
 import { AppStoreContext, type AppStoreValue, type ToastMessage } from './AppStoreContext'
 import type {
@@ -13,11 +13,17 @@ import type {
 } from '../types'
 import { addDays, toDateKey } from '../utils/date'
 import { useAuth } from '../auth/useAuth'
-import { studentApi } from '../services/studentApi'
+import { studentApi, type StudentCloudSnapshot } from '../services/studentApi'
 import { clamp, getMasteryLevel, getRiskLevel, ratingMasteryDelta, reviewIntervalDays } from '../utils/learning'
+import { clearWorkspaceData, getWorkspaceSnapshot, hydrateWorkspaceSnapshot, type WorkspaceSnapshot } from '../utils/familyLearningWorkspace'
 
-const STORAGE_KEY_PREFIX = 'aixuexi:private-family:v3'
-const storageKey = (userId?: string) => `${STORAGE_KEY_PREFIX}:${userId || 'anonymous'}`
+const STORAGE_KEY_PREFIX = 'aixuexi:private-family:v6'
+const storageKey = (userId: string) => `${STORAGE_KEY_PREFIX}:${userId}`
+
+for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+  const key = localStorage.key(index)
+  if (key?.startsWith('aixuexi:private-family:v3:') || key?.includes(':mock-user')) localStorage.removeItem(key)
+}
 
 const normalizeExplanation = (explanation?: Partial<AiExplanation>): AiExplanation | undefined => {
   if (!explanation) return undefined
@@ -71,7 +77,7 @@ const normalizeState = (candidate?: Partial<AppState> | null): AppState => {
   return {
     ...seed,
     ...candidate,
-    version: 5,
+    version: 6,
     profile: { ...seed.profile, ...candidate.profile },
     questions: Array.isArray(candidate.questions) ? candidate.questions.map((question) => ({ ...question, explanation: normalizeExplanation(question.explanation) })) : [],
     mistakes: candidate.mistakes.map((mistake) => ({
@@ -93,21 +99,30 @@ const normalizeState = (candidate?: Partial<AppState> | null): AppState => {
     knowledgeItems: Array.isArray(candidate.knowledgeItems) ? candidate.knowledgeItems : [],
     activityLogs: Array.isArray(candidate.activityLogs) ? candidate.activityLogs : [],
     strategyPreferences: Array.isArray(candidate.strategyPreferences) ? candidate.strategyPreferences : [],
-    settings: { ...seed.settings, ...(candidate.settings || {}), dataVersion: 5 },
+    settings: { ...seed.settings, ...(candidate.settings || {}), dataVersion: 6 },
   }
 }
 
-const loadState = (userId?: string): AppState => {
+const applyAccountIdentity = (state: AppState, userId: string, displayName?: string): AppState => ({
+  ...state,
+  profile: {
+    ...state.profile,
+    id: userId,
+    name: state.profile.name.trim() || displayName?.trim() || '',
+  },
+})
+
+const loadState = (userId: string, displayName?: string): AppState => {
   try {
     const raw = localStorage.getItem(storageKey(userId))
-    if (!raw) return createSeedState()
-    return normalizeState(JSON.parse(raw) as Partial<AppState>)
+    if (!raw) return applyAccountIdentity(createSeedState(), userId, displayName)
+    return applyAccountIdentity(normalizeState(JSON.parse(raw) as Partial<AppState>), userId, displayName)
   } catch {
-    return createSeedState()
+    return applyAccountIdentity(createSeedState(), userId, displayName)
   }
 }
 
-const persistState = (userId: string | undefined, state: AppState) => {
+const persistState = (userId: string, state: AppState) => {
   const key = storageKey(userId)
   try {
     localStorage.setItem(key, JSON.stringify(state))
@@ -129,13 +144,20 @@ const persistState = (userId: string | undefined, state: AppState) => {
   }
 }
 
+type CloudSnapshot = AppState & { workspace?: WorkspaceSnapshot }
+
+const cloudSnapshot = (state: AppState): CloudSnapshot => ({
+  ...state,
+  workspace: getWorkspaceSnapshot(),
+})
+
 const makeLog = (type: AppState['activityLogs'][number]['type'], title: string, description: string) => ({
   id: crypto.randomUUID(), type, title, description, createdAt: new Date().toISOString(),
 })
 
 const updateKnowledge = (
   points: KnowledgePoint[],
-  input: { id: string; name: string; subject: KnowledgePoint['subject']; chapter?: string; correct: boolean; cause?: KnowledgePoint['mainCause']; delta?: number },
+  input: { id: string; name: string; subject: KnowledgePoint['subject']; grade?: KnowledgePoint['grade']; chapter?: string; correct: boolean; cause?: KnowledgePoint['mainCause']; delta?: number },
 ): KnowledgePoint[] => {
   const existing = points.find((item) => item.id === input.id)
   const now = new Date().toISOString()
@@ -147,7 +169,7 @@ const updateKnowledge = (
       {
         id: input.id,
         subject: input.subject,
-        grade: '高二',
+        grade: input.grade || '',
         chapter: input.chapter || '待分类章节',
         name: input.name,
         mastery,
@@ -183,59 +205,158 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const userId = user?.id
   const userRole = user?.role
-  const [state, setState] = useState<AppState>(() => loadState(userId))
+  const [state, setState] = useState<AppState>(() => createSeedState())
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const [cloudReady, setCloudReady] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<AppStoreValue['syncStatus']>('idle')
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+  const [syncError, setSyncError] = useState('')
   const skipNextCloudPush = useRef(true)
   const hydratedUser = useRef<string | undefined>(undefined)
   const stateRef = useRef(state)
+  const snapshotQueue = useRef<Promise<void>>(Promise.resolve())
+
+  const pushSnapshotQueued = useCallback((snapshot: StudentCloudSnapshot, accountId: string) => {
+    const request = snapshotQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (hydratedUser.current !== accountId) throw new Error('SYNC_ACCOUNT_CHANGED')
+        return studentApi.pushSnapshot(snapshot)
+      })
+    snapshotQueue.current = request.then(() => undefined, () => undefined)
+    return request
+  }, [])
 
   useEffect(() => {
     stateRef.current = state
-    persistState(userId, state)
     document.documentElement.dataset.theme = state.settings.theme
-  }, [state, userId])
+    if (userId && userRole === 'student' && hydratedUser.current === userId) persistState(userId, state)
+  }, [state, userId, userRole])
 
   useEffect(() => {
-    if (!userId || userRole !== 'student' || hydratedUser.current === userId) return
+    if (!userId || userRole !== 'student') {
+      hydratedUser.current = undefined
+      stateRef.current = createSeedState()
+      setState(stateRef.current)
+      setCloudReady(false)
+      setSyncStatus('idle')
+      setLastSyncedAt(null)
+      setSyncError('')
+      return
+    }
+    const localState = loadState(userId, user?.displayName)
     hydratedUser.current = userId
-    stateRef.current = loadState(userId)
-    setState(stateRef.current)
-  }, [userId, userRole])
+    stateRef.current = localState
+    setState(localState)
+  }, [userId, userRole, user?.displayName])
 
   useEffect(() => {
     let cancelled = false
-    if (!userId || userRole !== 'student') {
+    if (!userId || userRole !== 'student' || hydratedUser.current !== userId) {
       setCloudReady(false)
       return () => { cancelled = true }
     }
     setCloudReady(false)
+    setSyncStatus('loading')
+    setSyncError('')
     skipNextCloudPush.current = true
     studentApi.getSnapshot()
-      .then(({ snapshot }) => {
+      .then(async ({ snapshot, updatedAt }) => {
         if (cancelled) return
-        if (snapshot?.profile && Array.isArray(snapshot.mistakes)) setState(normalizeState(snapshot))
-        else void studentApi.pushSnapshot(stateRef.current)
+        const remote = snapshot as (Partial<CloudSnapshot> | null)
+        let syncedAt = updatedAt
+        if (remote?.profile && Array.isArray(remote.mistakes)) {
+          hydrateWorkspaceSnapshot(remote.workspace, false)
+          const next = applyAccountIdentity(normalizeState(remote), userId, user?.displayName)
+          stateRef.current = next
+          setState(next)
+        } else {
+          clearWorkspaceData(false)
+          const result = await pushSnapshotQueued(cloudSnapshot(stateRef.current), userId)
+          syncedAt = result.updatedAt
+          skipNextCloudPush.current = false
+        }
+        if (cancelled) return
+        setLastSyncedAt(syncedAt || new Date().toISOString())
+        setSyncStatus('synced')
         setCloudReady(true)
       })
       .catch((error) => {
-        console.warn('Cloud snapshot load failed; keeping local data.', error)
-        if (!cancelled) setCloudReady(true)
+        console.warn('Cloud snapshot load failed.', error)
+        if (!cancelled) {
+          setCloudReady(false)
+          setSyncStatus('error')
+          setSyncError(error instanceof Error ? error.message : '学习数据同步失败')
+        }
       })
     return () => { cancelled = true }
-  }, [userId, userRole])
+  }, [userId, userRole, user?.displayName, pushSnapshotQueued])
 
   useEffect(() => {
-    if (!cloudReady || !userId || userRole !== 'student') return
+    if (!cloudReady || !userId || userRole !== 'student' || hydratedUser.current !== userId) return
     if (skipNextCloudPush.current) {
       skipNextCloudPush.current = false
       return
     }
     const timer = window.setTimeout(() => {
-      studentApi.pushSnapshot(state).catch((error) => console.warn('Cloud snapshot sync failed.', error))
+      setSyncStatus('loading')
+      setSyncError('')
+      pushSnapshotQueued(cloudSnapshot(state), userId)
+        .then((result) => {
+          if (hydratedUser.current !== userId) return
+          setLastSyncedAt(result.updatedAt)
+          setSyncStatus('synced')
+        })
+        .catch((error) => {
+          if (hydratedUser.current !== userId || (error instanceof Error && error.message === 'SYNC_ACCOUNT_CHANGED')) return
+          console.warn('Cloud snapshot sync failed.', error)
+          setSyncStatus('error')
+          setSyncError(error instanceof Error ? error.message : '学习数据同步失败')
+        })
     }, 1200)
     return () => window.clearTimeout(timer)
-  }, [state, cloudReady, userId, userRole])
+  }, [state, cloudReady, userId, userRole, pushSnapshotQueued])
+
+  useEffect(() => {
+    if (!cloudReady || !userId || userRole !== 'student') return
+    const syncWorkspace = () => {
+      setSyncStatus('loading')
+      setSyncError('')
+      pushSnapshotQueued(cloudSnapshot(stateRef.current), userId)
+        .then((result) => {
+          if (hydratedUser.current !== userId) return
+          setLastSyncedAt(result.updatedAt)
+          setSyncStatus('synced')
+        })
+        .catch((error) => {
+          if (hydratedUser.current !== userId || (error instanceof Error && error.message === 'SYNC_ACCOUNT_CHANGED')) return
+          console.warn('Workspace sync failed.', error)
+          setSyncStatus('error')
+          setSyncError(error instanceof Error ? error.message : '学习数据同步失败')
+        })
+    }
+    window.addEventListener('aixuexi:workspace-changed', syncWorkspace)
+    return () => window.removeEventListener('aixuexi:workspace-changed', syncWorkspace)
+  }, [cloudReady, userId, userRole, pushSnapshotQueued])
+
+  const syncNow = useCallback(async () => {
+    if (!userId || userRole !== 'student') throw new Error('请先登录学生账号')
+    setSyncStatus('loading')
+    setSyncError('')
+    try {
+      const result = await pushSnapshotQueued(cloudSnapshot(stateRef.current), userId)
+      if (hydratedUser.current !== userId) return
+      setLastSyncedAt(result.updatedAt)
+      setSyncStatus('synced')
+      setCloudReady(true)
+    } catch (error) {
+      if (hydratedUser.current !== userId || (error instanceof Error && error.message === 'SYNC_ACCOUNT_CHANGED')) return
+      const message = error instanceof Error ? error.message : '学习数据同步失败'
+      setSyncStatus('error')
+      setSyncError(message)
+      throw error
+    }
+  }, [userId, userRole, pushSnapshotQueued])
 
   const notify: AppStoreValue['notify'] = (type, title, message) => {
     const id = crypto.randomUUID()
@@ -331,7 +452,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         ...current,
         questions,
         mistakes,
-        knowledgePoints: updateKnowledge(current.knowledgePoints, { id: question.knowledgePointId, name: question.knowledgePointName, subject: question.subject, chapter: question.chapter, correct: false, cause: primaryCause }),
+        knowledgePoints: updateKnowledge(current.knowledgePoints, { id: question.knowledgePointId, name: question.knowledgePointName, subject: question.subject, grade: current.profile.grade, chapter: question.chapter, correct: false, cause: primaryCause }),
         reviewTasks: reviewExists ? current.reviewTasks : [{ id: crypto.randomUUID(), sourceId: actualId, sourceKind: 'mistake', subject: question.subject, title: `订正：${question.knowledgePointName}`, knowledgePointId: question.knowledgePointId, scheduledDate: toDateKey(now), status: 'pending', priority: 3, createdAt: now }, ...current.reviewTasks],
         activityLogs: [makeLog('mistake', `新增${question.subject}错题`, `${question.knowledgePointName}已进入两轮订正流程`), ...current.activityLogs].slice(0, 60),
       }
@@ -453,6 +574,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           id: mistake.knowledgePointId,
           name: mistake.knowledgePointName,
           subject: mistake.subject,
+          grade: current.profile.grade,
           chapter: mistake.chapter,
           correct: input.transferPassed,
           cause: mistake.primaryCause,
@@ -496,7 +618,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         ...current,
         mistakes: current.mistakes.map((item) => item.id === id ? { ...item, mastery, masteryLevel: getMasteryLevel(mastery), lastReviewedAt: now, nextReviewAt, wrongCount: item.wrongCount + (rating === 'again' ? 1 : 0) } : item),
         reviewTasks: [task, ...current.reviewTasks.map((item) => item.sourceId === id && item.status === 'pending' ? { ...item, status: 'completed' as const, completedAt: now } : item)],
-        knowledgePoints: updateKnowledge(current.knowledgePoints, { id: mistake.knowledgePointId, name: mistake.knowledgePointName, subject: mistake.subject, chapter: mistake.chapter, correct: rating === 'good' || rating === 'easy', cause: mistake.primaryCause, delta }),
+        knowledgePoints: updateKnowledge(current.knowledgePoints, { id: mistake.knowledgePointId, name: mistake.knowledgePointName, subject: mistake.subject, grade: current.profile.grade, chapter: mistake.chapter, correct: rating === 'good' || rating === 'easy', cause: mistake.primaryCause, delta }),
         activityLogs: [makeLog('review', `复习${mistake.knowledgePointName}`, `掌握度更新为 ${mastery}%`), ...current.activityLogs].slice(0, 60),
       }
     })
@@ -557,7 +679,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       let reviews = [...current.reviewTasks]
       completed.forEach((item) => {
         const isCorrect = item.userAnswer.trim() === item.correctAnswer.trim()
-        knowledge = updateKnowledge(knowledge, { id: item.knowledgePointId, name: item.knowledgePointName, subject: item.subject, correct: isCorrect, cause: isCorrect ? undefined : '知识点不会' })
+        knowledge = updateKnowledge(knowledge, { id: item.knowledgePointId, name: item.knowledgePointName, subject: item.subject, grade: current.profile.grade, correct: isCorrect, cause: isCorrect ? undefined : '知识点不会' })
         if (!isCorrect && current.settings.autoAddMistakes) {
           const questionId = `quiz-question-${item.id}`
           const existingMistake = mistakes.find((mistake) => mistake.questionId === questionId && !mistake.archived)
@@ -600,7 +722,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       let reviews = [...current.reviewTasks]
       paper.questions.forEach((item) => {
         const correct = item.isCorrect
-        knowledge = updateKnowledge(knowledge, { id: item.knowledgePointId, name: item.knowledgePointName, subject: item.subject, chapter: paper.title, correct, cause: item.errorCause })
+        knowledge = updateKnowledge(knowledge, { id: item.knowledgePointId, name: item.knowledgePointName, subject: item.subject, grade: current.profile.grade, chapter: paper.title, correct, cause: item.errorCause })
         if (!correct) {
           const questionId = `paper-${paper.id}-${item.id}`
           const mistakeId = crypto.randomUUID()
@@ -626,7 +748,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       let questions = [...current.questions]
       let reviews = [...current.reviewTasks]
       items.forEach((item) => {
-        knowledge = updateKnowledge(knowledge, { id: item.question.knowledgePointId, name: item.question.knowledgePointName, subject: item.question.subject, correct: item.isCorrect, cause: item.cause })
+        knowledge = updateKnowledge(knowledge, { id: item.question.knowledgePointId, name: item.question.knowledgePointName, subject: item.question.subject, grade: current.profile.grade, correct: item.isCorrect, cause: item.cause })
         if (!item.isCorrect) {
           const questionId = `simulation-${item.question.id}`
           const mistakeId = crypto.randomUUID()
@@ -648,7 +770,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const parsed = JSON.parse(json)
       const data = (parsed.data ?? parsed) as AppState
       if (!data.profile || !Array.isArray(data.mistakes) || !Array.isArray(data.knowledgePoints)) throw new Error('数据结构无效')
-      setState(normalizeState(data))
+      const normalized = normalizeState(data)
+      setState(userId ? applyAccountIdentity(normalized, userId, user?.displayName) : normalized)
       notify('success', '数据导入成功')
     } catch (error) {
       notify('error', '数据导入失败', error instanceof Error ? error.message : '无法解析文件')
@@ -657,12 +780,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }
 
   const resetData = () => {
-    setState(createSeedState())
-    notify('success', '演示数据已重置')
+    clearWorkspaceData(false)
+    const emptyState = createSeedState()
+    setState(userId ? applyAccountIdentity(emptyState, userId, user?.displayName) : emptyState)
+    notify('success', '本机学习数据已清空')
   }
 
   const value: AppStoreValue = {
-    state, toasts, updateProfile, updateSettings, saveMistake, updateMistakeDetails, setCorrectionMethod, recordCorrectionAttempt, completeCorrection, removeMistake, archiveMistake, reviewMistake, reviewCard, toggleTask, addDailyTask, completeQuiz, addPaper, applySimulation, exportData, importData, resetData, notify, dismissToast,
+    state, toasts, syncStatus, lastSyncedAt, syncError, syncNow, updateProfile, updateSettings, saveMistake, updateMistakeDetails, setCorrectionMethod, recordCorrectionAttempt, completeCorrection, removeMistake, archiveMistake, reviewMistake, reviewCard, toggleTask, addDailyTask, completeQuiz, addPaper, applySimulation, exportData, importData, resetData, notify, dismissToast,
   }
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { requireAuth, requireRole, type AuthenticatedRequest } from './auth.js'
+import { config } from './config.js'
 import {
   curriculumPrompt,
   fixedTextbookVersions,
@@ -13,8 +14,18 @@ import { createLearningAssetKey, createReadUrl, isR2Ready, putObjectBuffer } fro
 
 const router = Router()
 const studentOnly = [requireAuth, requireRole('student')] as const
-const timeoutMs = Math.max(60_000, Number(process.env.AI_TIMEOUT_MS || 300_000))
+const timeoutMs = config.aiTimeoutMs
 
+type StudyCycleRefinement = { chapter: string; knowledgePoint: string }
+type GradeSimulationQuestion = {
+  id: string
+  studentAnswer: string
+}
+type SimulationPoint = { id: string; name: string }
+
+function textbookVersionFor(subject: unknown): string {
+  return fixedTextbookVersions[String(subject) as SupportedSubject] || ''
+}
 
 type SavedImage = { key: string; url: string; contentType: string }
 
@@ -117,7 +128,7 @@ const studyCycleSchema = z.object({
   sourceScopes: z.array(z.string().max(60)).max(8).default(['textbook']),
   duration: z.number().int().min(10).max(60).default(25),
   depth: z.enum(['快速', '标准', '深入']).default('标准'),
-}).refine((value) => Boolean(value.chapter.trim() || value.knowledgePoint.trim()), {
+}).refine((value: StudyCycleRefinement) => Boolean(value.chapter.trim() || value.knowledgePoint.trim()), {
   message: '章节和知识点至少填写一项',
 })
 
@@ -368,7 +379,7 @@ router.post('/ocr/question', ...studentOnly, asyncRoute(async (req, res) => {
         content: [
           {
             type: 'text',
-            text: `科目：${input.subject}\n教材：${fixedTextbookVersions[input.subject]}\n请完整理解图片后输出结构化结果。`,
+            text: `科目：${input.subject}\n教材：${textbookVersionFor(input.subject)}\n请完整理解图片后输出结构化结果。`,
           },
           { type: 'image_url', image_url: { url: savedImage.url } },
         ],
@@ -381,7 +392,7 @@ router.post('/ocr/question', ...studentOnly, asyncRoute(async (req, res) => {
 router.post('/ocr/paper', ...studentOnly, asyncRoute(async (req, res) => {
   const input = paperSchema.parse(req.body)
   const savedImages = await Promise.all(
-    input.imageDataUrls.map((value) => saveLearningImage(req.user!.id, value, 'paper')),
+    input.imageDataUrls.map((value: string) => saveLearningImage(req.user!.id, value, 'paper')),
   )
   const context = await knowledgeContext(req.user!.id, input.subject, [])
   const result = await aiJson({
@@ -408,7 +419,7 @@ router.post('/ocr/paper', ...studentOnly, asyncRoute(async (req, res) => {
         content: [
           {
             type: 'text',
-            text: `科目：${input.subject}\n教材：${fixedTextbookVersions[input.subject]}\n请完成整卷识别、判分和错因分析。`,
+            text: `科目：${input.subject}\n教材：${textbookVersionFor(input.subject)}\n请完成整卷识别、判分和错因分析。`,
           },
           ...savedImages.map(({ url }) => ({
             type: 'image_url',
@@ -462,7 +473,7 @@ router.post('/ai/explain', ...studentOnly, asyncRoute(async (req, res) => {
         role: 'user',
         content: [
           `科目：${input.subject}`,
-          `教材：${fixedTextbookVersions[input.subject]}`,
+          `教材：${textbookVersionFor(input.subject)}`,
           `题目：${input.content}`,
           `学生原答案：${input.studentAnswer || '未填写'}`,
           `内部参考答案：${input.correctAnswer || '请自行判断'}`,
@@ -559,7 +570,7 @@ router.post('/ai/grade-simulation', ...studentOnly, asyncRoute(async (req, res) 
     ],
   }) as { items?: Array<Record<string, unknown>> }
   const byId = new Map((raw.items || []).map((item) => [String(item.id || ''), item]))
-  const items = input.questions.map((question) => {
+  const items = input.questions.map((question: GradeSimulationQuestion) => {
     const item = byId.get(question.id) || {}
     const causeCandidate = String(item.errorCause || '知识点不会')
     return {
@@ -575,7 +586,7 @@ router.post('/ai/grade-simulation', ...studentOnly, asyncRoute(async (req, res) 
 
 router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
   const input = simulationSchema.parse(req.body)
-  const names = input.points.map((point) => point.name).filter(Boolean)
+  const names = input.points.map((point: SimulationPoint) => point.name).filter(Boolean)
   const context = await knowledgeContext(req.user!.id, input.subject, [input.chapter || '', ...names], {
     bookId: input.bookId,
     chapter: input.chapter,
@@ -618,7 +629,7 @@ router.post('/ai/simulation', ...studentOnly, asyncRoute(async (req, res) => {
         content: [
           `模式：${modeLabel}`,
           `科目：${input.subject}`,
-          `教材版本：${fixedTextbookVersions[input.subject]}`,
+          `教材版本：${textbookVersionFor(input.subject)}`,
           `指定书册：${input.bookTitle || '未指定'}`,
           `指定章节：${input.chapter || '全册综合'}`,
           `知识点：${names.join('、') || '所选章节综合内容'}`,
@@ -697,7 +708,7 @@ router.post('/ai/study-cycle', ...studentOnly, asyncRoute(async (req, res) => {
         content: [
           `模式：${modeLabel}`,
           `科目：${input.subject}`,
-          `教材版本：${fixedTextbookVersions[input.subject]}`,
+          `教材版本：${textbookVersionFor(input.subject)}`,
           `指定书册：${input.bookTitle}`,
           `章节：${input.chapter || '未指定'}`,
           `知识点：${input.knowledgePoint || '未指定'}`,

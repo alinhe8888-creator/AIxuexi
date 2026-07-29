@@ -184,6 +184,7 @@ export const store = {
         email: user.email,
         displayName: user.displayName,
         snapshot: memory.snapshots.get(studentId)?.snapshot ?? null,
+        snapshotUpdatedAt: memory.snapshots.get(studentId)?.updatedAt ?? null,
       }
     }
     const result = await query<{
@@ -191,8 +192,9 @@ export const store = {
       email: string
       display_name: string
       snapshot: unknown
+      snapshot_updated_at: string | null
     }>(
-      `SELECT u.id,u.email,u.display_name,s.snapshot
+      `SELECT u.id,u.email,u.display_name,s.snapshot,s.updated_at AS snapshot_updated_at
        FROM parent_student_links l
        JOIN users u ON u.id=l.student_user_id
        LEFT JOIN student_snapshots s ON s.student_user_id=u.id
@@ -206,6 +208,7 @@ export const store = {
           email: row.email,
           displayName: row.display_name,
           snapshot: row.snapshot,
+          snapshotUpdatedAt: row.snapshot_updated_at,
         }
       : null
   },

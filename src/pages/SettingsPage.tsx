@@ -1,6 +1,6 @@
-import { Moon, Save, Settings, Sun } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { Badge, Button, Card, PageHeader, SectionTitle } from '../components/ui'
+import { Moon, RefreshCcw, Save, Settings, Sun } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Badge, Button, Callout, Card, PageHeader, SectionTitle } from '../components/ui'
 import { useAppStore } from '../store/useAppStore'
 import type { AppSettings, StudentProfile, Subject } from '../types'
 import {
@@ -10,7 +10,7 @@ import {
 } from '../config/curriculum'
 
 export function SettingsPage() {
-  const { state, updateProfile, updateSettings } = useAppStore()
+  const { state, updateProfile, updateSettings, syncStatus, lastSyncedAt, syncError, syncNow, notify } = useAppStore()
   const initialProfile = useMemo<StudentProfile>(() => ({
     ...state.profile,
     selectedSubjects: [...FIXED_SUBJECTS] as Subject[],
@@ -23,11 +23,15 @@ export function SettingsPage() {
   const [profile, setProfile] = useState<StudentProfile>(initialProfile)
   const [settings, setSettings] = useState<AppSettings>({ ...state.settings })
 
+  useEffect(() => setProfile(initialProfile), [initialProfile])
+  useEffect(() => setSettings({ ...state.settings }), [state.settings])
+
   const saveProfile = () => {
     updateProfile({
       ...profile,
       selectedSubjects: [...FIXED_SUBJECTS] as Subject[],
       textbookVersions: { ...FIXED_TEXTBOOK_VERSIONS },
+      onboarded: Boolean(profile.grade),
     })
   }
 
@@ -37,8 +41,34 @@ export function SettingsPage() {
         eyebrow="学习设置"
         title="设置"
         description="管理年级、当前章节、学习时间和讲解方式。"
-        actions={<Badge tone="success">自动同步</Badge>}
+        actions={
+          <>
+            <Badge tone={syncStatus === 'error' ? 'danger' : syncStatus === 'synced' ? 'success' : 'warning'}>
+              {syncStatus === 'error' ? '同步失败' : syncStatus === 'synced' ? '已同步' : syncStatus === 'loading' ? '同步中' : '等待同步'}
+            </Badge>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={syncStatus === 'loading'}
+              onClick={() => void syncNow()
+                .then(() => notify('success', '学习数据已同步', '家长端刷新后即可看到最新数据。'))
+                .catch((error) => notify('error', '同步失败', error instanceof Error ? error.message : '请稍后重试'))}
+            >
+              <RefreshCcw size={15} className={syncStatus === 'loading' ? 'spin' : ''} />
+              立即同步
+            </Button>
+          </>
+        }
       />
+
+      {syncStatus === 'error' && (
+        <Callout tone="danger" title="学习数据尚未同步到家长端">
+          {syncError || '请检查网络和后端服务后重试。'}
+        </Callout>
+      )}
+      {lastSyncedAt && syncStatus !== 'error' && (
+        <p className="sync-timestamp">最近同步：{new Date(lastSyncedAt).toLocaleString('zh-CN')}</p>
+      )}
 
       <div className="settings-layout">
         <div className="stack">
@@ -64,6 +94,7 @@ export function SettingsPage() {
                       })
                     }
                   >
+                    <option value="" disabled>请选择年级</option>
                     <option>高一</option>
                     <option>高二</option>
                     <option>高三</option>
@@ -162,7 +193,7 @@ export function SettingsPage() {
                 { value: 'balanced', title: '平衡式', desc: '提示和完整步骤兼顾' },
                 { value: 'direct', title: '直接式', desc: '用于快速复盘' },
               ].map((item) => (
-                <button
+                <button type="button"
                   key={item.value}
                   className={settings.aiMode === item.value ? 'active' : ''}
                   onClick={() =>
@@ -186,7 +217,7 @@ export function SettingsPage() {
                 <strong>错题自动保存</strong>
                 <span>答错后立即进入错题本，不在训练页直接显示答案</span>
               </div>
-              <button
+              <button type="button"
                 className={`switch ${settings.autoAddMistakes ? 'on' : ''}`}
                 onClick={() =>
                   setSettings({
@@ -204,7 +235,7 @@ export function SettingsPage() {
                 <strong>自适应多讲法</strong>
                 <span>不会时在启发、类比、图像、推导、步骤和反例之间自动切换</span>
               </div>
-              <button
+              <button type="button"
                 className={`switch ${settings.adaptiveExplanation !== false ? 'on' : ''}`}
                 onClick={() => setSettings({ ...settings, adaptiveExplanation: settings.adaptiveExplanation === false })}
               >
@@ -217,7 +248,7 @@ export function SettingsPage() {
                 <strong>严格订正闭环</strong>
                 <span>必须完成原题订正和迁移小测，才允许标记为已掌握</span>
               </div>
-              <button
+              <button type="button"
                 className={`switch ${settings.strictCorrectionMode !== false ? 'on' : ''}`}
                 onClick={() => setSettings({ ...settings, strictCorrectionMode: settings.strictCorrectionMode === false })}
               >
@@ -230,7 +261,7 @@ export function SettingsPage() {
                 <strong>保存有效讲法</strong>
                 <span>把真正帮助答对的讲解方式沉淀进学生画像，后续优先使用</span>
               </div>
-              <button
+              <button type="button"
                 className={`switch ${settings.saveEffectiveMethods !== false ? 'on' : ''}`}
                 onClick={() => setSettings({ ...settings, saveEffectiveMethods: settings.saveEffectiveMethods === false })}
               >
@@ -259,21 +290,21 @@ export function SettingsPage() {
           <Card>
             <SectionTitle title="主题" />
             <div className="theme-options">
-              <button
+              <button type="button"
                 className={settings.theme === 'light' ? 'active' : ''}
                 onClick={() => setSettings({ ...settings, theme: 'light' })}
               >
                 <Sun size={21} />
                 <strong>浅色</strong>
               </button>
-              <button
+              <button type="button"
                 className={settings.theme === 'dark' ? 'active' : ''}
                 onClick={() => setSettings({ ...settings, theme: 'dark' })}
               >
                 <Moon size={21} />
                 <strong>深色</strong>
               </button>
-              <button
+              <button type="button"
                 className={settings.theme === 'system' ? 'active' : ''}
                 onClick={() => setSettings({ ...settings, theme: 'system' })}
               >

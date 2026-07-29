@@ -290,15 +290,15 @@ export function SimulationPage() {
           <h1>模拟训练</h1>
           <p>按教材、章节、题型和薄弱点出题；提交后先判断和订正，不会立刻把答案铺出来。</p>
         </div>
-        {questions.length > 0 && <button className="family-secondary-button" onClick={reset}><RotateCcw size={16} />重新设置</button>}
+        {questions.length > 0 && <button type="button" className="family-secondary-button" onClick={reset}><RotateCcw size={16} />重新设置</button>}
       </header>
 
       {!questions.length && (
         <section className="simulation-builder">
           <div className="simulation-mode-grid simulation-mode-grid--three">
-            <button className={mode === 'mini' ? 'active' : ''} onClick={() => changeMode('mini')}><Target size={24} /><span><strong>专项小练</strong><small>3—10 道，集中验证一个知识点</small></span></button>
-            <button className={mode === 'paper' ? 'active' : ''} onClick={() => changeMode('paper')}><FileText size={24} /><span><strong>整套模拟卷</strong><small>按考试结构组合章节和题型</small></span></button>
-            <button className={mode === 'sprint' ? 'active sprint' : 'sprint'} onClick={() => changeMode('sprint')}><Flame size={24} /><span><strong>考前冲刺</strong><small>限时、高频、易错和得分策略</small></span></button>
+            <button type="button" className={mode === 'mini' ? 'active' : ''} onClick={() => changeMode('mini')}><Target size={24} /><span><strong>专项小练</strong><small>3—10 道，集中验证一个知识点</small></span></button>
+            <button type="button" className={mode === 'paper' ? 'active' : ''} onClick={() => changeMode('paper')}><FileText size={24} /><span><strong>整套模拟卷</strong><small>按考试结构组合章节和题型</small></span></button>
+            <button type="button" className={mode === 'sprint' ? 'active sprint' : 'sprint'} onClick={() => changeMode('sprint')}><Flame size={24} /><span><strong>考前冲刺</strong><small>限时、高频、易错和得分策略</small></span></button>
           </div>
 
           <div className="simulation-form-grid">
@@ -312,13 +312,13 @@ export function SimulationPage() {
 
           {mode === 'sprint' && <div className="sprint-focus-card"><Flame size={21} /><label><strong>冲刺重点</strong><input value={sprintFocus} onChange={(event) => setSprintFocus(event.target.value)} placeholder="例如：选择题速度、古诗文易错、函数高频考点" /></label><p>系统会优先安排短时可提分内容，并给出时间分配和舍题策略。</p></div>}
 
-          <div className="simulation-section"><div className="simulation-section-title"><strong>难度</strong><span>{mode === 'sprint' ? '冲刺版建议混合难度，先保基础分' : '整套卷建议选择“混合”'}</span></div><div className="option-pills">{difficulties.map((item) => <button key={item} className={difficulty === item ? 'active' : ''} onClick={() => setDifficulty(item)}>{item}</button>)}</div></div>
+          <div className="simulation-section"><div className="simulation-section-title"><strong>难度</strong><span>{mode === 'sprint' ? '冲刺版建议混合难度，先保基础分' : '整套卷建议选择“混合”'}</span></div><div className="option-pills">{difficulties.map((item) => <button type="button" key={item} className={difficulty === item ? 'active' : ''} onClick={() => setDifficulty(item)}>{item}</button>)}</div></div>
           <div className="simulation-section"><div className="simulation-section-title"><strong>题型</strong><span>至少保留一种题型</span></div><div className="format-checkbox-grid">{formats.map((format) => <label key={format} className={selectedFormats.includes(format) ? 'active' : ''}><input type="checkbox" checked={selectedFormats.includes(format)} onChange={() => toggleFormat(format)} /><span>{format}</span></label>)}</div></div>
           <div className="simulation-section"><div className="simulation-section-title"><strong>题源范围</strong><span>优先从家庭知识库和个人数据生成</span></div><div className="format-checkbox-grid">{sourceOptions.map((option) => <label key={option.id} className={sourceScopes.includes(option.id) ? 'active' : ''}><input type="checkbox" checked={sourceScopes.includes(option.id)} onChange={() => toggleSource(option.id)} /><span>{option.label}</span></label>)}</div></div>
-          <div className="simulation-section"><div className="simulation-section-title"><strong>知识点</strong><span>不选择时按书册与章节综合出题</span></div>{points.length > 0 && <div className="point-chip-grid">{points.slice(0, 12).map((point) => <button key={point.id} className={pointIds.includes(point.id) ? 'active' : ''} onClick={() => togglePoint(point.id)}><span>{point.name}</span><small>掌握 {point.mastery}%</small></button>)}</div>}<input className="custom-point-input" value={customPoint} onChange={(event) => setCustomPoint(event.target.value)} placeholder="可手动输入知识点或老师指定范围" /></div>
+          <div className="simulation-section"><div className="simulation-section-title"><strong>知识点</strong><span>不选择时按书册与章节综合出题</span></div>{points.length > 0 && <div className="point-chip-grid">{points.slice(0, 12).map((point) => <button type="button" key={point.id} className={pointIds.includes(point.id) ? 'active' : ''} onClick={() => togglePoint(point.id)}><span>{point.name}</span><small>掌握 {point.mastery}%</small></button>)}</div>}<input className="custom-point-input" value={customPoint} onChange={(event) => setCustomPoint(event.target.value)} placeholder="可手动输入知识点或老师指定范围" /></div>
 
           {error && <div className="family-error">{error}</div>}
-          <button className="family-generate-button" disabled={loading || !selectedBook} onClick={generate}>{loading ? <><LoaderCircle className="spin" size={19} />正在生成 {effectiveCount} 道题，请不要关闭页面</> : <><Sparkles size={19} />生成{modeLabel[mode]}</>}</button>
+          <button type="button" className="family-generate-button" disabled={loading || !selectedBook} onClick={generate}>{loading ? <><LoaderCircle className="spin" size={19} />正在生成 {effectiveCount} 道题，请不要关闭页面</> : <><Sparkles size={19} />生成{modeLabel[mode]}</>}</button>
         </section>
       )}
 
@@ -359,7 +359,7 @@ export function SimulationPage() {
                         {!grade.correct && <small>错因：{grade.errorCause} · 已自动进入错题本</small>}
                       </div>
                       {!grade.correct && (
-                        <button onClick={() => void startCorrection(question)} disabled={loadingCorrection === question.id}>
+                        <button type="button" onClick={() => void startCorrection(question)} disabled={loadingCorrection === question.id}>
                           {loadingCorrection === question.id ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
                           {correctionOpen ? '继续订正' : '开始订正'}
                         </button>
@@ -385,7 +385,7 @@ export function SimulationPage() {
 
           {error && <div className="family-error">{error}</div>}
           {!submitted ? (
-            <button className="family-generate-button" onClick={() => void submitForGrading()} disabled={grading}>
+            <button type="button" className="family-generate-button" onClick={() => void submitForGrading()} disabled={grading}>
               {grading ? <LoaderCircle className="spin" size={19} /> : <ClipboardCheck size={19} />}
               {grading ? '正在按步骤批改并整理错题…' : '提交批改（错误题不直接显示答案）'}
             </button>
@@ -393,7 +393,7 @@ export function SimulationPage() {
             <div className="simulation-result-bar simulation-result-bar--adaptive">
               <div><span>本次综合得分</span><strong>{score}%</strong><p>{wrongCount ? `${wrongCount} 道题已进入订正队列，完成迁移检测后才算真正掌握。` : '本组全部通过，可以进入下一知识点。'}</p></div>
               <div className="simulation-result-counters"><span><b>{questions.length - wrongCount}</b>已掌握</span><span><b>{wrongCount}</b>待订正</span></div>
-              <button onClick={reset}>再出一组</button>
+              <button type="button" onClick={reset}>再出一组</button>
             </div>
           )}
         </section>

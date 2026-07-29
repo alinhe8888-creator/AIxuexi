@@ -12,6 +12,7 @@ const server = spawn(process.execPath, ['dist/server.js'], {
   cwd: new URL('..', import.meta.url),
   env: {
     ...process.env,
+    NODE_ENV: 'test',
     PORT: String(port),
     DB_MODE: 'memory',
     DATABASE_URL: '',
@@ -63,16 +64,6 @@ async function request(method, path, { token, body, expected = 200, headers = {}
   return result.payload
 }
 
-async function requestFirst(method, paths, options = {}) {
-  let last = null
-  for (const path of paths) {
-    const result = await rawRequest(method, path, options)
-    last = { ...result, path }
-    if (result.status !== 404) return last
-  }
-  return last
-}
-
 function asArray(payload, keys) {
   if (Array.isArray(payload)) return payload
   for (const key of keys) {
@@ -84,7 +75,8 @@ function asArray(payload, keys) {
 try {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     try {
-      await request('GET', '/api/health')
+      const health = await request('GET', '/api/health')
+      assert.equal(health.version, '6.0.0-production')
       break
     } catch (error) {
       if (attempt === 49) throw error
@@ -115,7 +107,7 @@ try {
   const today = new Date().toISOString().slice(0, 10)
 
   const snapshot = {
-    version: 5,
+    version: 6,
     profile: {
       id: studentLogin.user.id,
       name: '接口测试学生',
@@ -169,6 +161,10 @@ try {
       lastUsedAt: new Date().toISOString(),
     }],
     settings: { answerRevealAttempts: 2, adaptiveExplanation: true },
+    workspace: {
+      studySessions: [{ id: 'smoke-session', mode: 'preview', duration: 25, createdAt: new Date().toISOString() }],
+      dailyCompletions: { 'session:smoke-session': true },
+    },
   }
 
   await request('PUT', '/api/student/snapshot', {
@@ -176,31 +172,25 @@ try {
     body: { snapshot },
   })
 
-  // 家长端兼容 legacy 的 /parent/... 和新版 /api/parent/... 路径。
-  const childrenResult = await requestFirst(
-    'GET',
-    ['/parent/children', '/api/parent/children'],
-    { token: parentToken },
-  )
-  assert.equal(childrenResult.status, 200, `家长学生列表失败: ${JSON.stringify(childrenResult.payload)}`)
-  const children = asArray(childrenResult.payload, ['children', 'students'])
+  await request('GET', '/api/student/snapshot', { token: parentToken, expected: 403 })
+  await request('GET', '/api/parent/children', { token: studentToken, expected: 403 })
+  await request('GET', '/api/materials/imports', { expected: 401 })
+  await request('DELETE', '/api/materials', { token: studentToken, expected: 405 })
+
+  const childrenPayload = await request('GET', '/api/parent/children', { token: parentToken })
+  const children = asArray(childrenPayload, ['children'])
   assert.ok(children.length >= 1, '家长端没有自动连接固定学生')
 
   const child = children[0]
-  const studentId = child.id ?? child.studentId ?? child.userId ?? studentLogin.user.id
-  const dashboardResult = await requestFirst(
-    'GET',
-    [
-      `/parent/children/${studentId}/dashboard`,
-      `/api/parent/children/${studentId}/dashboard`,
-    ],
-    { token: parentToken },
-  )
-  assert.equal(dashboardResult.status, 200, `家长仪表盘失败: ${JSON.stringify(dashboardResult.payload)}`)
-  const dashboard = dashboardResult.payload?.dashboard ?? dashboardResult.payload
+  const studentId = child.id ?? studentLogin.user.id
+  const dashboardPayload = await request('GET', `/api/parent/children/${studentId}/dashboard`, { token: parentToken })
+  const dashboard = dashboardPayload.dashboard
   assert.ok(Array.isArray(dashboard.reviewStatus), '家长端缺少错题订正状态图表')
   assert.ok(dashboard.reviewStatus.some((item) => item.label === '已验证' && item.value >= 1), '家长端未统计已验证错题')
   assert.ok(Array.isArray(dashboard.strategyMethods) && dashboard.strategyMethods.length >= 1, '家长端缺少有效讲法图表')
+  assert.equal(dashboard.today?.completed, 1, '家长端未同步学生端学习周期完成状态')
+  assert.equal(dashboard.today?.completedMinutes, 25, '家长端未同步学生端真实学习时长')
+  assert.ok(Date.parse(dashboard.student?.lastSyncedAt) > 0, '家长端缺少真实快照更新时间')
 
   // 私人固定绑定模式已删除 6 位绑定码，404 属于正确行为。
   await request('POST', '/api/student/pair-code', {
@@ -293,7 +283,7 @@ try {
   await request('GET', '/api/not-a-real-endpoint', { expected: 404 })
 
   console.log(
-    `✅ API smoke test passed: 私人账号、固定家长绑定、自适应订正图表、快照和 ${recordTypes.length} 类学习记录均正常。`,
+    `✅ API smoke test passed: 正式账号、固定家长绑定、真实工作区同步、自适应订正图表、快照和 ${recordTypes.length} 类学习记录均正常。`,
   )
 } finally {
   server.kill('SIGTERM')

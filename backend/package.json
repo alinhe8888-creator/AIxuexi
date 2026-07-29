@@ -1,6 +1,6 @@
 {
   "name": "aixuexi-backend",
-  "version": "5.0.0-final",
+  "version": "6.0.0-production",
   "private": true,
   "type": "module",
   "engines": {

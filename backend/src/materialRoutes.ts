@@ -19,7 +19,7 @@ import {
 import { contentTypeForPath, extractLocalText, extractZipEntries, isRemoteDocument } from './zipText.js'
 import { requireAuth, requireRole, type AuthenticatedRequest } from './auth.js'
 import { store, type StoredRecord } from './store.js'
-import { fixedTextbookVersions, getBookById, isSupportedSubject, subjectValues } from './curriculum.js'
+import { fixedTextbookVersions, getBookById, isSupportedSubject, matchAnyBook, subjectValues } from './curriculum.js'
 
 const router = Router()
 const auth = [requireAuth, requireRole('student')] as const
@@ -67,6 +67,21 @@ const directUploadQuerySchema = z.object({
 })
 
 const idSchema = z.string().uuid()
+const bindingSchema = z.object({ bookId: z.string().trim().min(1).max(100) })
+
+
+function requestError(message: string, status = 400) {
+  return Object.assign(new Error(message), { status, expose: true })
+}
+
+function selectedBookForMetadata(input: { bookId?: string; subject?: string; grade?: string }) {
+  if (!input.bookId) return undefined
+  const book = getBookById(input.bookId)
+  if (!book) throw requestError('书册不存在')
+  if (input.subject && input.subject !== book.subject) throw requestError('科目与所选书册不一致')
+  if (input.grade && book.grade !== '跨年级' && input.grade !== book.grade) throw requestError('年级与所选书册不一致')
+  return book
+}
 
 type ImportStatus = 'queued' | 'extracting' | 'analyzing' | 'ready' | 'failed'
 type ImportPayload = {
@@ -114,10 +129,58 @@ async function listKnowledge(studentId: string) {
   return records.map((record) => toPayload<KnowledgeItemPayload>(record))
 }
 
-async function deleteKnowledgeForImport(studentId: string, importId: string) {
+async function knowledgeRecordsForImport(studentId: string, importId: string) {
   const records = await store.listRecords(studentId, 'knowledge-items')
-  const targets = records.filter((record) => (record.payload as Partial<KnowledgeItemPayload>)?.materialId === importId)
+  return records.filter((record) => (record.payload as Partial<KnowledgeItemPayload>)?.materialId === importId)
+}
+
+async function deleteKnowledgeForImport(studentId: string, importId: string) {
+  const targets = await knowledgeRecordsForImport(studentId, importId)
   await Promise.all(targets.map((record) => store.deleteRecord(studentId, 'knowledge-items', record.id)))
+}
+
+function normalizeImportPayload(job: ImportPayload) {
+  job.totalFiles = Math.max(0, Number(job.totalFiles || 0))
+  job.processedFiles = Math.max(0, Number(job.processedFiles || 0))
+  job.knowledgeCount = Math.max(0, Number(job.knowledgeCount || 0))
+  job.progress = Math.max(0, Math.min(100, Number(job.progress || 0)))
+  job.skippedFiles = Array.isArray(job.skippedFiles) ? job.skippedFiles : []
+  job.extractedKeys = Array.isArray(job.extractedKeys) ? job.extractedKeys : []
+  job.errors = Array.isArray(job.errors) ? job.errors : []
+  const configuredBook = job.bookId ? getBookById(job.bookId) : undefined
+  if (job.bookId && !configuredBook) {
+    job.bookId = undefined
+    job.bookTitle = undefined
+  }
+  const inferredBook = configuredBook || matchAnyBook(`${job.fileName} ${job.bookTitle || ''}`)
+  if (inferredBook) {
+    job.bookId = inferredBook.id
+    job.bookTitle = inferredBook.title
+    job.subject = inferredBook.subject
+    if (inferredBook.grade !== '跨年级') job.grade = inferredBook.grade
+    job.textbookVersion = fixedTextbookVersions[inferredBook.subject]
+  }
+  return job
+}
+
+async function reconcileImport(studentId: string, job: ImportPayload) {
+  const before = JSON.stringify(job)
+  normalizeImportPayload(job)
+  const actualKnowledgeCount = (await knowledgeRecordsForImport(studentId, job.id)).length
+  if (job.status === 'ready') {
+    job.knowledgeCount = actualKnowledgeCount
+    job.progress = 100
+    if (job.totalFiles > 0) job.processedFiles = job.totalFiles
+    if (!actualKnowledgeCount) {
+      job.status = 'failed'
+      job.stage = '未找到已生成的知识条目，请重新解析'
+      job.progress = 0
+    }
+  } else if (actualKnowledgeCount > 0 && job.knowledgeCount !== actualKnowledgeCount) {
+    job.knowledgeCount = actualKnowledgeCount
+  }
+  if (JSON.stringify(job) !== before) await saveImport(studentId, job.id, job)
+  return job
 }
 
 function buildJob(input: {
@@ -135,18 +198,26 @@ function buildJob(input: {
   containerType?: 'zip' | 'document'
   contentType?: string
 }): ImportPayload {
-  const book = input.bookId ? getBookById(input.bookId) : undefined
-  const subject = input.subject || book?.subject
+  const selectedBook = selectedBookForMetadata(input)
+  const inferredCandidate = selectedBook || matchAnyBook(`${input.fileName} ${input.bookTitle || ''}`)
+  const inferredBook = inferredCandidate
+    && (!input.subject || inferredCandidate.subject === input.subject)
+    && (!input.grade || inferredCandidate.grade === '跨年级' || inferredCandidate.grade === input.grade)
+    ? inferredCandidate
+    : undefined
+  const subject = selectedBook?.subject || input.subject || inferredBook?.subject
   const now = new Date().toISOString()
   return {
     id: randomUUID(),
     key: input.key,
     fileName: input.fileName,
     subject,
-    grade: input.grade || (book?.grade === '跨年级' ? undefined : book?.grade),
-    textbookVersion: input.textbookVersion || (subject ? fixedTextbookVersions[subject] : undefined),
-    bookId: input.bookId || book?.id,
-    bookTitle: input.bookTitle || book?.title,
+    grade: selectedBook?.grade === '跨年级'
+      ? input.grade
+      : selectedBook?.grade || input.grade || (inferredBook?.grade === '跨年级' ? undefined : inferredBook?.grade),
+    textbookVersion: inferredBook ? fixedTextbookVersions[inferredBook.subject] : input.textbookVersion || (subject ? fixedTextbookVersions[subject] : undefined),
+    bookId: inferredBook?.id,
+    bookTitle: inferredBook?.title || input.bookTitle,
     resourceKind: input.resourceKind || 'textbook',
     sourceName: input.sourceName || (input.sourceType === 'open_resource' ? '公开学习资源' : '家庭上传资料'),
     sourceUrl: input.sourceUrl,
@@ -174,13 +245,16 @@ async function processImport(studentId: string, importId: string) {
   try {
     const record = await store.getRecord(studentId, 'material-imports', importId)
     if (!record) return
-    const job = toPayload<ImportPayload>(record)
+    const job = normalizeImportPayload(toPayload<ImportPayload>(record))
     assertOwnedMaterialKey(studentId, job.key)
-    await deleteKnowledgeForImport(studentId, importId)
+    const preservedKnowledgeRecords = await knowledgeRecordsForImport(studentId, importId)
+    const preservedKnowledgeCount = preservedKnowledgeRecords.length
+    const stagedItems: KnowledgeItemPayload[] = []
 
     job.status = 'extracting'
     job.stage = job.containerType === 'zip' ? '正在读取 ZIP' : '正在读取资料文件'
     job.progress = 3
+    job.processedFiles = 0
     await saveImport(studentId, importId, job)
 
     const sourceBuffer = await fetchObjectBuffer(job.key)
@@ -193,7 +267,6 @@ async function processImport(studentId: string, importId: string) {
     if (!supported.length) throw new Error('资料中没有可处理的 PDF、图片、DOCX、PPTX、XLSX、EPUB、TXT、MD、HTML、CSV 或 JSON 文件')
     await saveImport(studentId, importId, job)
 
-    let knowledgeCount = 0
     for (let index = 0; index < supported.length; index += 1) {
       const entry = supported[index]!
       job.status = 'analyzing'
@@ -212,51 +285,90 @@ async function processImport(studentId: string, importId: string) {
           const contentType = shouldReuseSource ? job.contentType : contentTypeForPath(entry.path)
           if (!shouldReuseSource) {
             await putObjectBuffer(extractedKey, entry.buffer, contentType)
-            job.extractedKeys.push(extractedKey)
+            if (!job.extractedKeys.includes(extractedKey)) job.extractedKeys.push(extractedKey)
           }
           const readUrl = createReadUrl(extractedKey, 1800)
           text = await extractRemoteDocumentText(readUrl, contentType, entry.path)
         }
         if (!text || text.trim().length < 20) {
-          job.skippedFiles.push(entry.path)
-          continue
+          if (!job.skippedFiles.includes(entry.path)) job.skippedFiles.push(entry.path)
+        } else {
+          const items = await buildKnowledgeFromText(text, {
+            materialId: importId,
+            fileName: job.fileName,
+            sourcePath: entry.path,
+            subjectHint: job.subject,
+            gradeHint: job.grade,
+            bookId: job.bookId,
+            bookTitle: job.bookTitle,
+            resourceKind: job.resourceKind,
+            sourceName: job.sourceName,
+            sourceType: job.sourceType,
+          })
+          stagedItems.push(...items)
         }
-        const items = await buildKnowledgeFromText(text, {
-          materialId: importId,
-          fileName: job.fileName,
-          sourcePath: entry.path,
-          subjectHint: job.subject,
-          gradeHint: job.grade,
-          bookId: job.bookId,
-          bookTitle: job.bookTitle,
-          resourceKind: job.resourceKind,
-          sourceName: job.sourceName,
-          sourceType: job.sourceType,
-        })
-        for (const item of items) await store.upsertRecord(studentId, 'knowledge-items', item.id, item)
-        knowledgeCount += items.length
       } catch (error) {
         const message = `${entry.path}: ${error instanceof Error ? error.message : '分析失败'}`
         job.errors.push(message.slice(0, 500))
       }
       job.processedFiles = index + 1
-      job.knowledgeCount = knowledgeCount
+      job.knowledgeCount = stagedItems.length || preservedKnowledgeCount
       job.progress = Math.min(95, Math.round(((index + 1) / supported.length) * 90) + 5)
       await saveImport(studentId, importId, job)
     }
 
-    if (!knowledgeCount) throw new Error(job.errors[0] || '资料已读取，但没有生成有效知识条目')
+    if (!stagedItems.length) throw new Error(job.errors[0] || '资料已读取，但没有生成有效知识条目')
+
+    if (!job.bookId) {
+      const bookIds = [...new Set(stagedItems.map((item) => item.bookId).filter((value): value is string => Boolean(value)))]
+      if (bookIds.length === 1) {
+        const book = getBookById(bookIds[0]!)
+        if (book) {
+          job.bookId = book.id
+          job.bookTitle = book.title
+          job.subject = book.subject
+          if (book.grade !== '跨年级') job.grade = book.grade
+          job.textbookVersion = fixedTextbookVersions[book.subject]
+        }
+      }
+    }
+    if (!job.subject) {
+      const subjects = [...new Set(stagedItems.map((item) => item.subject))]
+      if (subjects.length === 1) job.subject = subjects[0]
+    }
+
+    const insertedIds: string[] = []
+    try {
+      for (const item of stagedItems) {
+        await store.upsertRecord(studentId, 'knowledge-items', item.id, item)
+        insertedIds.push(item.id)
+      }
+    } catch (error) {
+      await Promise.all(insertedIds.map(async (id) => {
+        try { await store.deleteRecord(studentId, 'knowledge-items', id) } catch { /* keep original error */ }
+      }))
+      throw error
+    }
+
+    for (const oldRecord of preservedKnowledgeRecords) {
+      try { await store.deleteRecord(studentId, 'knowledge-items', oldRecord.id) }
+      catch (error) { job.errors.push(`旧知识清理失败：${error instanceof Error ? error.message : '未知错误'}`.slice(0, 500)) }
+    }
+
     job.status = 'ready'
-    job.stage = '知识库已生成'
+    job.stage = job.bookId ? '知识库已生成并匹配书册' : '知识库已生成，待手动绑定书册'
     job.progress = 100
-    job.knowledgeCount = knowledgeCount
+    job.processedFiles = job.totalFiles
+    job.knowledgeCount = stagedItems.length
     await saveImport(studentId, importId, job)
   } catch (error) {
     const record = await store.getRecord(studentId, 'material-imports', importId)
     if (record) {
-      const job = toPayload<ImportPayload>(record)
+      const job = normalizeImportPayload(toPayload<ImportPayload>(record))
+      const preservedKnowledgeCount = (await knowledgeRecordsForImport(studentId, importId)).length
       job.status = 'failed'
-      job.stage = '导入失败'
+      job.stage = preservedKnowledgeCount ? '重新解析失败，已保留原知识库' : '导入失败'
+      job.knowledgeCount = preservedKnowledgeCount
       job.errors = [...job.errors, error instanceof Error ? error.message : '导入失败'].slice(-50)
       await saveImport(studentId, importId, job)
     }
@@ -290,12 +402,24 @@ function fileNameFromUrl(url: URL) {
   return raw.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 180) || 'remote-material.pdf'
 }
 
-async function downloadRemoteMaterial(url: URL) {
+async function fetchAllowedRemote(url: URL, redirectCount = 0): Promise<globalThis.Response> {
+  if (redirectCount > 5) throw Object.assign(new Error('远程资料重定向次数过多'), { status: 400 })
   const response = await fetch(url, {
-    redirect: 'follow',
-    headers: { 'User-Agent': 'AIxuexi-family-learning/4.0' },
+    redirect: 'manual',
+    headers: { 'User-Agent': 'AIxuexi-family-learning/6.0' },
     signal: AbortSignal.timeout(240_000),
   })
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get('location')
+    if (!location) throw Object.assign(new Error('远程资料重定向地址无效'), { status: 400 })
+    const nextUrl = normalizeRemoteUrl(new URL(location, url).toString())
+    return fetchAllowedRemote(nextUrl, redirectCount + 1)
+  }
+  return response
+}
+
+async function downloadRemoteMaterial(url: URL) {
+  const response = await fetchAllowedRemote(url)
   if (!response.ok) throw Object.assign(new Error(`远程资料下载失败（${response.status}）`), { status: 400 })
   const length = Number(response.headers.get('content-length') || 0)
   if (length > maxMaterialBytes) throw Object.assign(new Error(`远程文件不能超过 ${Math.round(maxMaterialBytes / 1024 / 1024)} MB`), { status: 413 })
@@ -393,8 +517,10 @@ router.post('/materials/remote-imports', asyncRoute(async (req, res) => {
 
 router.get('/materials/imports', asyncRoute(async (req, res) => {
   const records = await store.listRecords(req.user!.id, 'material-imports')
-  const imports = records.map((record) => toPayload<ImportPayload>(record))
-  for (const job of imports) {
+  const imports: ImportPayload[] = []
+  for (const record of records) {
+    const job = await reconcileImport(req.user!.id, toPayload<ImportPayload>(record))
+    imports.push(job)
     if (job.status === 'queued' || job.status === 'extracting' || job.status === 'analyzing') void processImport(req.user!.id, job.id)
   }
   res.json({ imports })
@@ -404,19 +530,59 @@ router.get('/materials/imports/:id', asyncRoute(async (req, res) => {
   const id = idSchema.parse(req.params.id)
   const record = await store.getRecord(req.user!.id, 'material-imports', id)
   if (!record) { res.status(404).json({ message: '导入任务不存在' }); return }
-  res.json({ import: toPayload<ImportPayload>(record) })
+  res.json({ import: await reconcileImport(req.user!.id, toPayload<ImportPayload>(record)) })
+}))
+
+router.patch('/materials/imports/:id/binding', asyncRoute(async (req, res) => {
+  const id = idSchema.parse(req.params.id)
+  const input = bindingSchema.parse(req.body)
+  const record = await store.getRecord(req.user!.id, 'material-imports', id)
+  if (!record) { res.status(404).json({ message: '导入任务不存在' }); return }
+  const job = normalizeImportPayload(toPayload<ImportPayload>(record))
+  const token = `${req.user!.id}:${id}`
+  if (activeJobs.has(token) || job.status === 'queued' || job.status === 'extracting' || job.status === 'analyzing') {
+    res.status(409).json({ message: '资料正在处理中，完成后再绑定书册' })
+    return
+  }
+  const book = getBookById(input.bookId)
+  if (!book) { res.status(400).json({ message: '书册不存在' }); return }
+
+  job.bookId = book.id
+  job.bookTitle = book.title
+  job.subject = book.subject
+  if (book.grade !== '跨年级') job.grade = book.grade
+  job.textbookVersion = fixedTextbookVersions[book.subject]
+  job.stage = job.status === 'ready' ? '知识库已绑定书册' : '已绑定书册，等待重新解析'
+  await saveImport(req.user!.id, id, job)
+
+  const knowledgeRecords = await knowledgeRecordsForImport(req.user!.id, id)
+  for (const knowledgeRecord of knowledgeRecords) {
+    const payload = knowledgeRecord.payload as KnowledgeItemPayload
+    await store.upsertRecord(req.user!.id, 'knowledge-items', knowledgeRecord.id, {
+      ...payload,
+      subject: book.subject,
+      grade: book.grade === '跨年级' ? payload.grade : book.grade,
+      bookId: book.id,
+      bookTitle: book.title,
+    })
+  }
+  res.json({ import: job, updatedKnowledge: knowledgeRecords.length })
 }))
 
 router.post('/materials/imports/:id/retry', asyncRoute(async (req, res) => {
   const id = idSchema.parse(req.params.id)
   const record = await store.getRecord(req.user!.id, 'material-imports', id)
   if (!record) { res.status(404).json({ message: '导入任务不存在' }); return }
-  const job = toPayload<ImportPayload>(record)
+  const job = normalizeImportPayload(toPayload<ImportPayload>(record))
+  const token = `${req.user!.id}:${id}`
+  if (activeJobs.has(token) || job.status === 'queued' || job.status === 'extracting' || job.status === 'analyzing') {
+    res.status(409).json({ message: '资料已经在处理中，请勿重复提交' })
+    return
+  }
   job.status = 'queued'
-  job.stage = '等待重新处理'
+  job.stage = '等待重新解析'
   job.progress = 0
   job.processedFiles = 0
-  job.knowledgeCount = 0
   job.errors = []
   await saveImport(req.user!.id, id, job)
   void processImport(req.user!.id, id)
@@ -427,7 +593,11 @@ router.delete('/materials/imports/:id', asyncRoute(async (req, res) => {
   const id = idSchema.parse(req.params.id)
   const record = await store.getRecord(req.user!.id, 'material-imports', id)
   if (!record) { res.status(404).json({ message: '导入任务不存在' }); return }
-  const job = toPayload<ImportPayload>(record)
+  const job = normalizeImportPayload(toPayload<ImportPayload>(record))
+  if (activeJobs.has(`${req.user!.id}:${id}`) || job.status === 'queued' || job.status === 'extracting' || job.status === 'analyzing') {
+    res.status(409).json({ message: '资料正在处理中，不能删除' })
+    return
+  }
   await deleteKnowledgeForImport(req.user!.id, id)
   try { await deleteObject(job.key) } catch (error) { console.warn('Delete material source from R2 failed.', error) }
   await Promise.all((job.extractedKeys || []).map(async (key) => { try { await deleteObject(key) } catch { /* continue cleanup */ } }))
@@ -435,21 +605,9 @@ router.delete('/materials/imports/:id', asyncRoute(async (req, res) => {
   res.json({ ok: true })
 }))
 
-router.delete('/materials', asyncRoute(async (req, res) => {
-  const studentId = req.user!.id
-  const imports = await store.listRecords(studentId, 'material-imports')
-  const knowledge = await store.listRecords(studentId, 'knowledge-items')
-  await Promise.all([
-    ...imports.map((record) => store.deleteRecord(studentId, 'material-imports', record.id)),
-    ...knowledge.map((record) => store.deleteRecord(studentId, 'knowledge-items', record.id)),
-  ])
-  await Promise.all(imports.map(async (record) => {
-    const payload = record.payload as Partial<ImportPayload>
-    if (payload.key) try { await deleteObject(payload.key) } catch { /* cleanup should not block reset */ }
-    await Promise.all((payload.extractedKeys || []).map(async (childKey) => { try { await deleteObject(childKey) } catch { /* continue */ } }))
-  }))
-  res.json({ ok: true, removedImports: imports.length, removedKnowledge: knowledge.length })
-}))
+router.delete('/materials', (_req, res) => {
+  res.status(405).json({ message: '正式版已关闭一键清空教材；请逐个确认删除，避免误删 R2 原文件' })
+})
 
 router.get('/knowledge', asyncRoute(async (req, res) => {
   const subject = typeof req.query.subject === 'string' ? req.query.subject : ''

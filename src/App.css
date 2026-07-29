@@ -25,6 +25,7 @@
 .page-header p { margin: 0; max-width: 780px; font-size: 14px; }
 .eyebrow { color: var(--primary); font-size: 11px; font-weight: 800; letter-spacing: .15em; }
 .page-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.sync-timestamp { margin: -10px 0 18px; color: var(--text-muted); font-size: 13px; text-align: right; }
 .header-select { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-2); font-size: 13px; }
 .header-select select { border: none; outline: none; background: transparent; color: var(--text); font-weight: 700; }
 
@@ -779,9 +780,6 @@ input:focus, textarea:focus, select:focus { border-color: rgba(98,91,246,.6); bo
 .password-field { position:relative; }
 .password-field input { padding-right:43px; }
 .password-field button { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:34px; height:34px; border:none; border-radius:9px; display:grid; place-items:center; color:var(--text-3); background:transparent; }
-.demo-auth { margin-top:20px; padding-top:18px; border-top:1px solid var(--border); }
-.demo-auth > span { display:block; margin-bottom:8px; color:var(--text-3); font-size:9px; }
-.demo-auth > div { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 
 .parent-shell { min-height:100vh; background:var(--surface-2); }
 .parent-sidebar { position:fixed; inset:0 auto 0 0; z-index:30; width:252px; padding:22px 16px; display:flex; flex-direction:column; gap:19px; background:var(--surface); border-right:1px solid var(--border); }
@@ -881,9 +879,6 @@ input:focus, textarea:focus, select:focus { border-color: rgba(98,91,246,.6); bo
 .quiz-report-list strong { font-size:10px; }
 .quiz-report-list small, .muted-line { color:var(--text-3); font-size:8px; }
 .report-actions { display:grid; grid-template-columns:repeat(3,1fr); }
-.pair-code-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:end; margin-bottom:12px; }
-.pair-code-form label { display:flex; flex-direction:column; gap:6px; color:var(--text-2); font-size:9px; font-weight:750; }
-.pair-code-form input { min-height:47px; padding:0 14px; border:1px solid var(--border); border-radius:11px; background:var(--surface-2); color:var(--text); font-size:22px; font-weight:900; letter-spacing:.25em; }
 .permission-list { display:flex; flex-direction:column; gap:10px; }
 .permission-list > div { display:grid; grid-template-columns:75px 1fr; gap:8px; align-items:center; font-size:9px; color:var(--text-2); }
 .linked-child-list { display:flex; flex-direction:column; }
@@ -892,9 +887,6 @@ input:focus, textarea:focus, select:focus { border-color: rgba(98,91,246,.6); bo
 .linked-child-list > div > div:nth-child(2) { display:flex; flex-direction:column; gap:2px; }
 .linked-child-list strong { font-size:11px; }
 .linked-child-list small { color:var(--text-3); font-size:8px; }
-.student-pair-code { display:flex; flex-direction:column; align-items:center; gap:7px; padding:18px; border-radius:14px; background:var(--primary-soft); border:1px dashed rgba(98,91,246,.35); }
-.student-pair-code > span, .student-pair-code > small { color:var(--text-3); font-size:9px; }
-.student-pair-code > strong { color:var(--primary); font-size:35px; letter-spacing:.22em; }
 
 @media (max-width: 1100px) {
   .auth-page { grid-template-columns:1fr 1fr; }
@@ -938,11 +930,9 @@ input:focus, textarea:focus, select:focus { border-color: rgba(98,91,246,.6); bo
   .parent-subject-grid { grid-template-columns:1fr; }
   .parent-knowledge-table, .mistake-parent-list { min-width:700px; }
   .parent-page-container .card:has(.parent-knowledge-table), .parent-page-container .card:has(.mistake-parent-list) { overflow-x:auto; }
-  .pair-code-form { grid-template-columns:1fr; }
   .linked-child-list > div { grid-template-columns:auto 1fr; }
   .linked-child-list .btn { grid-column:2; justify-self:start; }
   .report-actions { grid-template-columns:1fr; }
-  .student-pair-code > strong { font-size:29px; }
 }
 .parent-mobile-nav { display:none; }
 @media (max-width:900px) {

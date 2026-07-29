@@ -9,7 +9,7 @@ const LAST_EMAIL_KEY = 'aixuexi:last-parent-email'
 export function ParentAuthPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
-  const [email, setEmail] = useState(() => localStorage.getItem(LAST_EMAIL_KEY) || 'alinhe8888@gmail.com')
+  const [email, setEmail] = useState(() => localStorage.getItem(LAST_EMAIL_KEY) || '')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)

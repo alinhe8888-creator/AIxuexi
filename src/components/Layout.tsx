@@ -63,10 +63,10 @@ export function Layout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="sidebar-card">
-          <div className="mini-avatar">{state.profile.name.slice(0, 1)}</div>
-          <div><strong>{state.profile.name}</strong><small>{state.profile.grade} · {user?.email}</small></div>
+          <div className="mini-avatar">{(state.profile.name || user?.displayName || '学').slice(0, 1)}</div>
+          <div><strong>{state.profile.name || user?.displayName || '学生'}</strong><small>{state.profile.grade || '年级未设置'} · {user?.email}</small></div>
         </div>
-        <button className="student-logout" onClick={logout}><LogOut size={16} />退出</button>
+        <button type="button" className="student-logout" onClick={logout}><LogOut size={16} />退出</button>
       </aside>
 
       <main className="main-area">
@@ -83,7 +83,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <Icon size={21} /><span>{label}</span>
           </NavLink>
         ))}
-        <button className={moreOpen ? 'active' : ''} onClick={() => setMoreOpen((open) => !open)}>
+        <button type="button" className={moreOpen ? 'active' : ''} onClick={() => setMoreOpen((open) => !open)}>
           <MoreHorizontal size={22} /><span>更多</span>
         </button>
       </nav>
@@ -92,7 +92,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="mobile-more-backdrop" onClick={() => setMoreOpen(false)}>
           <div className="mobile-more-sheet" onClick={(event) => event.stopPropagation()}>
             <div className="sheet-handle" />
-            <div className="sheet-header"><strong>全部功能</strong><button onClick={() => setMoreOpen(false)} aria-label="关闭"><X size={20} /></button></div>
+            <div className="sheet-header"><strong>全部功能</strong><button type="button" onClick={() => setMoreOpen(false)} aria-label="关闭"><X size={20} /></button></div>
             <div className="mobile-more-grid">
               {otherItems.map(({ to, label, icon: Icon }) => (
                 <NavLink key={to} to={to} onClick={() => setMoreOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>

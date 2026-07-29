@@ -59,10 +59,37 @@ export interface SimulationDraft {
   generatedAt?: string
 }
 
-const SESSION_KEY = 'aixuexi:study-sessions:v1'
-const ASSESSMENT_KEY = 'aixuexi:profile-assessment:v1'
-const SIMULATION_KEY = 'aixuexi:simulation-draft:v3'
-const COMPLETION_KEY = 'aixuexi:daily-completions:v1'
+export interface WorkspaceSnapshot {
+  timeZone?: string
+  studySessions: StudySession[]
+  profileAssessment: ProfileAssessmentResult | null
+  simulationDraft: SimulationDraft | null
+  dailyCompletions: Record<string, boolean>
+}
+
+const STORAGE_PREFIX = 'aixuexi:student-workspace:v6'
+const LEGACY_KEYS = [
+  'aixuexi:study-sessions:v1',
+  'aixuexi:profile-assessment:v1',
+  'aixuexi:simulation-draft:v3',
+  'aixuexi:daily-completions:v1',
+]
+
+for (const key of LEGACY_KEYS) localStorage.removeItem(key)
+
+function currentStudentId() {
+  try {
+    const raw = localStorage.getItem('aixuexi:student:auth-user')
+    const user = raw ? JSON.parse(raw) as { id?: string; role?: string } : null
+    return user?.role === 'student' && user.id ? user.id : 'anonymous'
+  } catch {
+    return 'anonymous'
+  }
+}
+
+function storageKey(name: string) {
+  return `${STORAGE_PREFIX}:${currentStudentId()}:${name}`
+}
 
 function safeParse<T>(value: string | null, fallback: T): T {
   if (!value) return fallback
@@ -73,6 +100,10 @@ function safeParse<T>(value: string | null, fallback: T): T {
   }
 }
 
+function notifyWorkspaceChanged() {
+  window.dispatchEvent(new CustomEvent('aixuexi:workspace-changed'))
+}
+
 export function localDateKey(date = new Date()) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -81,58 +112,90 @@ export function localDateKey(date = new Date()) {
 }
 
 export function loadStudySessions(): StudySession[] {
-  return safeParse<StudySession[]>(localStorage.getItem(SESSION_KEY), [])
+  return safeParse<StudySession[]>(localStorage.getItem(storageKey('study-sessions')), [])
 }
 
 export function saveStudySession(session: StudySession) {
   const current = loadStudySessions().filter((item) => item.id !== session.id)
   const next = [session, ...current].slice(0, 40)
-  localStorage.setItem(SESSION_KEY, JSON.stringify(next))
-  window.dispatchEvent(new CustomEvent('aixuexi:workspace-changed'))
+  localStorage.setItem(storageKey('study-sessions'), JSON.stringify(next))
+  notifyWorkspaceChanged()
   return next
 }
 
 export function deleteStudySession(id: string) {
   const next = loadStudySessions().filter((item) => item.id !== id)
-  localStorage.setItem(SESSION_KEY, JSON.stringify(next))
-  window.dispatchEvent(new CustomEvent('aixuexi:workspace-changed'))
+  localStorage.setItem(storageKey('study-sessions'), JSON.stringify(next))
+  notifyWorkspaceChanged()
   return next
 }
 
 export function loadProfileAssessment() {
-  return safeParse<ProfileAssessmentResult | null>(localStorage.getItem(ASSESSMENT_KEY), null)
+  return safeParse<ProfileAssessmentResult | null>(localStorage.getItem(storageKey('profile-assessment')), null)
 }
 
 export function saveProfileAssessment(result: ProfileAssessmentResult) {
-  localStorage.setItem(ASSESSMENT_KEY, JSON.stringify(result))
-  window.dispatchEvent(new CustomEvent('aixuexi:workspace-changed'))
+  localStorage.setItem(storageKey('profile-assessment'), JSON.stringify(result))
+  notifyWorkspaceChanged()
 }
 
 export function clearProfileAssessment() {
-  localStorage.removeItem(ASSESSMENT_KEY)
-  window.dispatchEvent(new CustomEvent('aixuexi:workspace-changed'))
+  localStorage.removeItem(storageKey('profile-assessment'))
+  notifyWorkspaceChanged()
 }
 
 export function loadSimulationDraft(): SimulationDraft | null {
-  return safeParse<SimulationDraft | null>(localStorage.getItem(SIMULATION_KEY), null)
+  return safeParse<SimulationDraft | null>(localStorage.getItem(storageKey('simulation-draft')), null)
 }
 
 export function saveSimulationDraft(draft: SimulationDraft) {
-  localStorage.setItem(SIMULATION_KEY, JSON.stringify(draft))
+  localStorage.setItem(storageKey('simulation-draft'), JSON.stringify(draft))
+  notifyWorkspaceChanged()
 }
 
 export function clearSimulationDraft() {
-  localStorage.removeItem(SIMULATION_KEY)
+  localStorage.removeItem(storageKey('simulation-draft'))
+  notifyWorkspaceChanged()
 }
 
 export function loadDailyCompletions(): Record<string, boolean> {
-  return safeParse<Record<string, boolean>>(localStorage.getItem(COMPLETION_KEY), {})
+  return safeParse<Record<string, boolean>>(localStorage.getItem(storageKey('daily-completions')), {})
 }
 
 export function toggleDailyCompletion(id: string) {
   const current = loadDailyCompletions()
   const next = { ...current, [id]: !current[id] }
-  localStorage.setItem(COMPLETION_KEY, JSON.stringify(next))
-  window.dispatchEvent(new CustomEvent('aixuexi:workspace-changed'))
+  localStorage.setItem(storageKey('daily-completions'), JSON.stringify(next))
+  notifyWorkspaceChanged()
   return next
+}
+
+export function getWorkspaceSnapshot(): WorkspaceSnapshot {
+  return {
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    studySessions: loadStudySessions(),
+    profileAssessment: loadProfileAssessment(),
+    simulationDraft: loadSimulationDraft(),
+    dailyCompletions: loadDailyCompletions(),
+  }
+}
+
+export function hydrateWorkspaceSnapshot(snapshot?: Partial<WorkspaceSnapshot> | null, emitChange = true) {
+  const write = (name: string, value: unknown) => {
+    const key = storageKey(name)
+    if (value === undefined || value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(value))
+  }
+  write('study-sessions', Array.isArray(snapshot?.studySessions) ? snapshot.studySessions : [])
+  write('profile-assessment', snapshot?.profileAssessment ?? null)
+  write('simulation-draft', snapshot?.simulationDraft ?? null)
+  write('daily-completions', snapshot?.dailyCompletions && typeof snapshot.dailyCompletions === 'object' ? snapshot.dailyCompletions : {})
+  if (emitChange) notifyWorkspaceChanged()
+}
+
+export function clearWorkspaceData(emitChange = true) {
+  for (const name of ['study-sessions', 'profile-assessment', 'simulation-draft', 'daily-completions']) {
+    localStorage.removeItem(storageKey(name))
+  }
+  if (emitChange) notifyWorkspaceChanged()
 }

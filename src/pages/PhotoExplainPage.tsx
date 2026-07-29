@@ -218,7 +218,7 @@ export function PhotoExplainPage() {
             {image ? (
               <>
                 <img src={image} alt="题目预览" />
-                <button className="image-remove" onClick={(event) => { event.stopPropagation(); setImage(''); setImageKey(''); setOcrStatus('idle') }}><X size={17} /></button>
+                <button type="button" className="image-remove" onClick={(event) => { event.stopPropagation(); setImage(''); setImageKey(''); setOcrStatus('idle') }}><X size={17} /></button>
                 <div className="image-caption"><FileImage size={16} />{fileName}</div>
               </>
             ) : (
@@ -293,7 +293,7 @@ export function PhotoExplainPage() {
             <SectionTitle title="错因与订正笔记" description="AI 会根据作答动态更新错因，你也可以人工修正。" />
             <div className="cause-selector">
               {causeLabels.map((cause) => (
-                <button
+                <button type="button"
                   key={cause}
                   className={primaryCause === cause ? 'active' : ''}
                   onClick={() => {

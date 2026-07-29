@@ -3,7 +3,6 @@ import {
   Suspense,
   useEffect,
   useRef,
-  useState,
   type ComponentType,
   type ReactNode,
 } from 'react'
@@ -22,7 +21,7 @@ import './styles/adaptive-tutor.css'
 
 type UnknownModule = Record<string, unknown>
 
-const CHUNK_RETRY_KEY = 'aixuexi:route-chunk-retry:v5'
+const CHUNK_RETRY_KEY = 'aixuexi:route-chunk-retry:v6'
 const SCROLL_KEY_PREFIX = 'aixuexi:route-scroll:v1'
 const CHUNK_ERROR_PATTERN =
   /ChunkLoadError|Loading chunk|dynamically imported module|module script|Failed to fetch/i
@@ -119,58 +118,32 @@ function PublicOnly({ children }: { children: ReactNode }) {
 }
 
 function StudentLearningApp() {
-  const location = useLocation()
-  const activePath = studentPages.some((page) => page.path === location.pathname)
-    ? location.pathname
-    : ''
-
-  const [visited, setVisited] = useState<Set<string>>(
-    () => new Set(activePath ? [activePath] : []),
-  )
-
-  useEffect(() => {
-    if (!activePath) return
-    setVisited((current) => {
-      if (current.has(activePath)) return current
-      const next = new Set(current)
-      next.add(activePath)
-      return next
-    })
-  }, [activePath])
-
-  if (location.pathname === '/') {
-    return <Navigate to="/daily-plan" replace />
-  }
-
   return (
     <Layout>
-      <div className="route-view route-view--stable">
-        {studentPages.map(({ path, Component }) => {
-          if (!visited.has(path)) return null
-          const active = activePath === path
-          return (
-            <section
+      <div className="route-view">
+        <Routes>
+          <Route path="/" element={<Navigate to="/daily-plan" replace />} />
+          {studentPages.map(({ path, Component }) => (
+            <Route
               key={path}
-              hidden={!active}
-              aria-hidden={!active}
-              data-route-cache={path}
-            >
-              <AppErrorBoundary resetKey={path}>
-                <Suspense fallback={<PageLoading />}>
-                  <Component />
-                </Suspense>
-              </AppErrorBoundary>
-            </section>
-          )
-        })}
-
-        {!activePath && (
-          <AppErrorBoundary resetKey="student-not-found">
-            <Suspense fallback={<PageLoading />}>
-              <NotFoundPage />
-            </Suspense>
-          </AppErrorBoundary>
-        )}
+              path={path}
+              element={
+                <AppErrorBoundary resetKey={path}>
+                  <Suspense fallback={<PageLoading />}>
+                    <Component />
+                  </Suspense>
+                </AppErrorBoundary>
+              }
+            />
+          ))}
+          <Route path="*" element={
+            <AppErrorBoundary resetKey="student-not-found">
+              <Suspense fallback={<PageLoading />}>
+                <NotFoundPage />
+              </Suspense>
+            </AppErrorBoundary>
+          } />
+        </Routes>
       </div>
     </Layout>
   )

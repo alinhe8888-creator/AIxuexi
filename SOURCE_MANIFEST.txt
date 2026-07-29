@@ -43,6 +43,8 @@ public/_redirects
 public/favicon.svg
 render.yaml
 scripts/verify-routes.mjs
+scripts/verify-source.mjs
+scripts/verify-ui.mjs
 src/App.css
 src/ParentPortal.tsx
 src/StudentPortal.tsx
@@ -88,7 +90,6 @@ src/services/authApi.ts
 src/services/index.ts
 src/services/learningApi.ts
 src/services/materialApi.ts
-src/services/mockApi.ts
 src/services/parentApi.ts
 src/services/studentApi.ts
 src/store/AppStore.tsx

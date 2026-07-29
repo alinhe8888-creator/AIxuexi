@@ -12,7 +12,7 @@ export type ErrorCause =
   | '粗心'
   | '时间不足'
 
-export type SourceType = 'user_upload' | 'real_exam' | 'ai_generated' | 'open_resource' | 'demo'
+export type SourceType = 'user_upload' | 'real_exam' | 'ai_generated' | 'open_resource'
 export type TaskType = 'study' | 'review' | 'quiz'
 export type TaskStatus = 'pending' | 'completed'
 export type QuestionFormat = '选择题' | '填空题' | '判断题' | '解答题' | '默写题'
@@ -22,7 +22,7 @@ export type CorrectionStatus = '待订正' | '订正中' | '待验证' | '已验
 export interface StudentProfile {
   id: string
   name: string
-  grade: '高一' | '高二' | '高三'
+  grade: '' | '高一' | '高二' | '高三'
   selectedSubjects: Subject[]
   textbookVersions: Partial<Record<Subject, string>>
   currentChapters: Partial<Record<Subject, string>>
@@ -208,7 +208,7 @@ export interface PaperRecord {
 export interface KnowledgePoint {
   id: string
   subject: Subject
-  grade: '高一' | '高二' | '高三'
+  grade: '' | '高一' | '高二' | '高三'
   chapter: string
   name: string
   mastery: number
@@ -300,7 +300,7 @@ export interface StudyCard {
 export interface KnowledgeItem {
   id: string
   subject: Subject
-  grade: '高一' | '高二' | '高三'
+  grade: '' | '高一' | '高二' | '高三'
   chapter: string
   knowledgePoint: string
   year?: number

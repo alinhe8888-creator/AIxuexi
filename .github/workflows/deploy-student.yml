@@ -23,8 +23,6 @@ jobs:
         run: npm run build:student
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          VITE_USE_MOCK_API: "false"
-          VITE_ALLOW_API_FALLBACK: "false"
       - name: Deploy to Cloudflare Pages
         run: npx wrangler@latest pages deploy dist-student --project-name=aixuexi --branch=main --commit-dirty=true
         env:

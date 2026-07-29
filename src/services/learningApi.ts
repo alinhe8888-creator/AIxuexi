@@ -16,7 +16,7 @@ import type {
   SimulationDifficulty,
   SimulationMode,
 } from '../utils/familyLearningWorkspace'
-import { apiRequest, USE_MOCK_API } from './apiClient'
+import { apiRequest } from './apiClient'
 
 export interface OcrQuestionInput {
   subject: Subject
@@ -98,16 +98,9 @@ export interface KnowledgeSearchFilters {
   keyword?: string
 }
 
-function requireRealApi() {
-  if (USE_MOCK_API) {
-    throw new Error('当前构建仍启用了模拟接口，请把 VITE_USE_MOCK_API 设置为 false')
-  }
-}
-
 export const learningApi = {
   ocr: {
     async recognizeQuestion(input: OcrQuestionInput) {
-      requireRealApi()
       return apiRequest<{
         content: string
         chapter: string
@@ -124,7 +117,6 @@ export const learningApi = {
     },
 
     async recognizePaper(input: PaperRecognitionInput): Promise<PaperQuestionAnalysis[]> {
-      requireRealApi()
       return apiRequest<PaperQuestionAnalysis[]>('/api/ocr/paper', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -135,7 +127,6 @@ export const learningApi = {
 
   ai: {
     async explainQuestion(input: AiExplainInput): Promise<AiExplanation> {
-      requireRealApi()
       return apiRequest<AiExplanation>('/api/ai/explain', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -144,7 +135,6 @@ export const learningApi = {
     },
 
     async assessAnswer(input: AnswerAssessmentInput): Promise<AnswerAssessment> {
-      requireRealApi()
       return apiRequest<AnswerAssessment>('/api/ai/check-answer', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -154,7 +144,6 @@ export const learningApi = {
     },
 
     async gradeSimulation(input: SimulationGradeInput): Promise<SimulationGradeResult> {
-      requireRealApi()
       return apiRequest<SimulationGradeResult>('/api/ai/grade-simulation', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -164,7 +153,6 @@ export const learningApi = {
     },
 
     async generateSimulation(input: SimulationInput): Promise<QuizQuestion[]> {
-      requireRealApi()
       return apiRequest<QuizQuestion[]>('/api/ai/simulation', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -174,7 +162,6 @@ export const learningApi = {
     },
 
     async generateStudyCycle(input: StudyCycleInput): Promise<StudyCycleResult> {
-      requireRealApi()
       return apiRequest<StudyCycleResult>('/api/ai/study-cycle', {
         method: 'POST',
         body: JSON.stringify(input),

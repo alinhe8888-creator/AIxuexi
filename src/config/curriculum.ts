@@ -211,11 +211,54 @@ export function getBookById(id: string) {
   return TEXTBOOK_BOOKS.find((book) => book.id === id)
 }
 
+const normalizeBookText = (value: string) => value
+  .replace(/[\s·（）()【】\[\]_-]+/g, '')
+  .replace(/第一/g, '1').replace(/第二/g, '2').replace(/第三/g, '3').replace(/第四/g, '4')
+  .replace(/一/g, '1').replace(/二/g, '2').replace(/三/g, '3').replace(/四/g, '4')
+  .replace(/第/g, '')
+  .toLowerCase()
+
+const bookVolume = (value: string) => /(?:选择性必修|选必|必修)([1-4])/.exec(normalizeBookText(value))?.[1] || ''
+const bookMarker = (value: string) => {
+  const normalized = normalizeBookText(value)
+  if (normalized.includes('上册') || normalized.includes('纲要上')) return 'up'
+  if (normalized.includes('中册')) return 'middle'
+  if (normalized.includes('下册') || normalized.includes('纲要下')) return 'down'
+  return ''
+}
+
 export function matchBookFromText(subject: SupportedSubject, text: string) {
-  const normalized = text.replace(/\s+/g, '').toLowerCase()
-  return getBooksBySubject(subject)
-    .map((book) => ({ book, score: [book.title, book.shortTitle, ...book.aliases].filter((alias) => normalized.includes(alias.replace(/\s+/g, '').toLowerCase())).length }))
-    .sort((left, right) => right.score - left.score)[0]?.score ? getBooksBySubject(subject).map((book) => ({ book, score: [book.title, book.shortTitle, ...book.aliases].filter((alias) => normalized.includes(alias.replace(/\s+/g, '').toLowerCase())).length })).sort((left, right) => right.score - left.score)[0]!.book : undefined
+  const normalized = normalizeBookText(text)
+  const asksSelective = normalized.includes('选择性必修') || normalized.includes('选必')
+  const asksRequired = !asksSelective && normalized.includes('必修')
+  const requestedVolume = bookVolume(text)
+  const requestedMarker = bookMarker(text)
+  const ranked = getBooksBySubject(subject).map((book) => {
+    if (asksSelective && book.category !== '选择性必修') return { book, score: Number.NEGATIVE_INFINITY }
+    if (asksRequired && book.category !== '必修') return { book, score: Number.NEGATIVE_INFINITY }
+    const candidateVolume = bookVolume(book.title)
+    const candidateMarker = bookMarker(book.title)
+    if (requestedVolume && requestedVolume !== candidateVolume) return { book, score: Number.NEGATIVE_INFINITY }
+    if (requestedMarker && requestedMarker !== candidateMarker) return { book, score: Number.NEGATIVE_INFINITY }
+
+    const aliases = [book.title, book.shortTitle, ...book.aliases].map(normalizeBookText)
+    let aliasScore = 0
+    for (const alias of aliases) {
+      if (normalized === alias) aliasScore = Math.max(aliasScore, 120)
+      else if (alias.length >= 3 && normalized.includes(alias)) aliasScore = Math.max(aliasScore, 55 + Math.min(20, alias.length / 2))
+      else if (normalized.length >= 4 && alias.includes(normalized)) aliasScore = Math.max(aliasScore, 38 + Math.min(16, normalized.length / 3))
+    }
+    return {
+      book,
+      score: aliasScore
+        + (asksSelective || asksRequired ? 12 : 0)
+        + (requestedVolume && requestedVolume === candidateVolume ? 28 : 0)
+        + (requestedMarker && requestedMarker === candidateMarker ? 28 : 0),
+    }
+  }).filter((item) => Number.isFinite(item.score)).sort((left, right) => right.score - left.score)
+  const best = ranked[0]
+  if (!best || best.score < 12 || (ranked[1] && ranked[1].score === best.score)) return undefined
+  return best.book
 }
 
 export function chapterOptionsForBook(bookId: string, importedChapters: string[] = []) {

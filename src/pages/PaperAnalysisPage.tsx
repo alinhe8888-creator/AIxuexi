@@ -15,7 +15,7 @@ export function PaperAnalysisPage() {
   const { state, addPaper, notify } = useAppStore()
   const inputRef = useRef<HTMLInputElement>(null)
   const [subject, setSubject] = useState<Subject>('数学')
-  const [title, setTitle] = useState('高二阶段检测')
+  const [title, setTitle] = useState('阶段检测')
   const [date, setDate] = useState(toDateKey())
   const [images, setImages] = useState<Array<{ data: string; name: string }>>([])
   const [questions, setQuestions] = useState<PaperQuestionAnalysis[]>([])
@@ -90,8 +90,8 @@ export function PaperAnalysisPage() {
           </div>
           <SectionTitle title="2. 上传试卷图片" description="最多 6 张，建议按页码顺序上传。" />
           <div className="paper-image-grid">
-            {images.map((image, index) => <div key={`${image.name}-${index}`}><img src={image.data} alt={`试卷第 ${index + 1} 页`} /><button onClick={() => setImages((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X size={15} /></button><span>第 {index + 1} 页</span></div>)}
-            {images.length < 6 && <button className="paper-add-image" onClick={() => inputRef.current?.click()}><Upload size={23} /><strong>添加试卷图片</strong><span>JPG / PNG / WEBP</span></button>}
+            {images.map((image, index) => <div key={`${image.name}-${index}`}><img src={image.data} alt={`试卷第 ${index + 1} 页`} /><button type="button" onClick={() => setImages((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X size={15} /></button><span>第 {index + 1} 页</span></div>)}
+            {images.length < 6 && <button type="button" className="paper-add-image" onClick={() => inputRef.current?.click()}><Upload size={23} /><strong>添加试卷图片</strong><span>JPG / PNG / WEBP</span></button>}
             <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={(event) => void handleFiles(event.target.files)} />
           </div>
           <Button className="full-width" onClick={() => void recognize()} disabled={!images.length || status === 'loading'}>{status === 'loading' ? <LoaderCircle className="spin" size={18} /> : <FileSearch size={18} />}{status === 'loading' ? '正在识别并拆分题目…' : '识别试卷并拆分题目'}</Button>

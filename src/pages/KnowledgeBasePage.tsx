@@ -73,6 +73,8 @@ export function KnowledgeBasePage() {
   const [imports, setImports] = useState<MaterialImportJob[]>([])
   const [items, setItems] = useState<KnowledgeItem[]>([])
   const [selected, setSelected] = useState<KnowledgeItem | null>(null)
+  const [bindingJob, setBindingJob] = useState<MaterialImportJob | null>(null)
+  const [bindingBookId, setBindingBookId] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [subjectHint, setSubjectHint] = useState<SupportedSubject | '自动判断'>('自动判断')
   const [gradeHint, setGradeHint] = useState<(typeof grades)[number]>('自动判断')
@@ -182,13 +184,6 @@ export function KnowledgeBasePage() {
     } finally { setBusy(false) }
   }
 
-  const handleClear = async () => {
-    if (!window.confirm('确定清空全部资料、导入记录和已生成知识库吗？此操作无法撤销。')) return
-    setBusy(true)
-    try { await materialApi.clearAll(); setItems([]); setImports([]); setSelected(null); setError('') }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '清空失败') }
-    finally { setBusy(false) }
-  }
 
   const handleDelete = async (job: MaterialImportJob) => {
     if (!window.confirm(`删除“${job.fileName}”及其生成的 ${job.knowledgeCount} 条知识吗？`)) return
@@ -199,10 +194,29 @@ export function KnowledgeBasePage() {
   }
 
   const handleRetry = async (job: MaterialImportJob) => {
+    if (!window.confirm(`重新解析“${job.fileName}”吗？旧知识库会保留到新解析成功后再替换。`)) return
     setBusy(true)
     try { await materialApi.retry(job.id); await refresh() }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '重试失败') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '重新解析失败') }
     finally { setBusy(false) }
+  }
+
+  const openBinding = (job: MaterialImportJob) => {
+    setBindingJob(job)
+    setBindingBookId(job.bookId || '')
+  }
+
+  const handleBinding = async () => {
+    if (!bindingJob || !bindingBookId) { setError('请选择要绑定的书册'); return }
+    setBusy(true)
+    try {
+      await materialApi.bindBook(bindingJob.id, bindingBookId)
+      setBindingJob(null)
+      setBindingBookId('')
+      await refresh()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '绑定书册失败')
+    } finally { setBusy(false) }
   }
 
   return (
@@ -211,7 +225,7 @@ export function KnowledgeBasePage() {
         eyebrow="家庭知识库"
         title="教材与题源"
         description="先核对书册是否齐全，再上传教材、练习册、真题和讲义。预习、复习、拍题与训练都会优先检索这里。"
-        actions={<div className="material-header-actions"><Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={loading || busy}><RefreshCw size={15} />刷新</Button><Button variant="danger" size="sm" onClick={() => void handleClear()} disabled={busy || (!items.length && !imports.length)}><Trash2 size={15} />全部清空</Button></div>}
+        actions={<div className="material-header-actions"><Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={loading || busy}><RefreshCw size={15} />刷新</Button></div>}
       />
 
       {error && <div className="material-error"><AlertTriangle size={18} /><span>{error}</span></div>}
@@ -247,8 +261,8 @@ export function KnowledgeBasePage() {
                         <div className="catalog-book-icon">{covered ? <CheckCircle2 size={20} /> : <CircleDashed size={20} />}</div>
                         <div><div className="badge-row"><Badge tone={book.required ? 'primary' : 'neutral'}>{book.category}</Badge><Badge>{book.grade}</Badge></div><strong>{book.shortTitle}</strong><small>{book.publisher}</small><span>{covered ? `${chapterCount || '已'}个章节已入库` : book.required ? '必修书册尚未识别' : '可按当前进度补充'}</span></div>
                         <div className="catalog-book-actions">
-                          <button onClick={() => { setSubjectHint(book.subject); setBookId(book.id); setResourceKind('textbook'); setTab('import') }}>补充</button>
-                          {book.repositoryUrl && <button onClick={() => window.open(book.repositoryUrl, '_blank', 'noopener,noreferrer')} aria-label="打开来源"><ExternalLink size={15} /></button>}
+                          <button type="button" onClick={() => { setSubjectHint(book.subject); setBookId(book.id); setResourceKind('textbook'); setTab('import') }}>补充</button>
+                          {book.repositoryUrl && <button type="button" onClick={() => window.open(book.repositoryUrl, '_blank', 'noopener,noreferrer')} aria-label="打开来源"><ExternalLink size={15} /></button>}
                         </div>
                       </article>
                     )
@@ -289,8 +303,18 @@ export function KnowledgeBasePage() {
             {imports.length ? <div className="material-job-list">{imports.map((job) => (
               <div className="material-job" key={job.id}>
                 <div className="material-job-icon">{job.sourceType === 'open_resource' ? <Globe2 size={20} /> : <FileArchive size={20} />}</div>
-                <div className="material-job-main"><div className="material-job-title"><strong>{job.fileName}</strong>{statusBadge(job.status)}</div><span>{job.bookTitle || job.subject || '自动识别'} · {resourceKinds.find((kind) => kind.value === job.resourceKind)?.label || job.resourceKind} · {job.stage} · {job.knowledgeCount} 条知识</span><ProgressBar value={job.progress} compact />{job.errors.length > 0 && <small title={job.errors.join('\n')}>{job.errors[job.errors.length - 1]}</small>}</div>
-                <div className="material-job-actions">{job.status === 'failed' && <button onClick={() => void handleRetry(job)} aria-label="重试"><RefreshCw size={16} /></button>}<button onClick={() => void handleDelete(job)} aria-label="删除"><Trash2 size={16} /></button></div>
+                <div className="material-job-main">
+                  <div className="material-job-title"><strong>{job.fileName}</strong>{statusBadge(job.status)}{!job.bookId && <Badge tone="warning">未匹配书册</Badge>}</div>
+                  <span>{job.bookTitle || job.subject || '待识别'} · {resourceKinds.find((kind) => kind.value === job.resourceKind)?.label || job.resourceKind} · {job.stage}</span>
+                  <ProgressBar value={job.progress} compact />
+                  <small>{job.totalFiles > 0 ? `文件 ${job.processedFiles}/${job.totalFiles} · ` : ''}{job.knowledgeCount} 条知识{job.skippedFiles.length ? ` · 跳过 ${job.skippedFiles.length}` : ''}</small>
+                  {job.errors.length > 0 && <small className="material-job-error" title={job.errors.join('\n')}>{job.errors[job.errors.length - 1]}</small>}
+                </div>
+                <div className="material-job-actions">
+                  {!activeStatuses.has(job.status) && <button type="button" onClick={() => openBinding(job)} aria-label="绑定书册" title="手动绑定书册"><BookOpenCheck size={16} /></button>}
+                  {!activeStatuses.has(job.status) && <button type="button" onClick={() => void handleRetry(job)} aria-label="重新解析" title="重新解析"><RefreshCw size={16} /></button>}
+                  <button type="button" onClick={() => void handleDelete(job)} aria-label="删除" title="删除资料" disabled={activeStatuses.has(job.status)}><Trash2 size={16} /></button>
+                </div>
               </div>
             ))}</div> : <EmptyState title="还没有资料" description="先在书目总览查看缺失书册，再上传教材 ZIP 或导入单个公开文件。" />}
           </Card>
@@ -310,7 +334,7 @@ export function KnowledgeBasePage() {
           </Card>
           <div className="material-results-head"><span>共 {filtered.length} 条</span>{loading && <small><LoaderCircle className="spin" size={13} />正在加载</small>}</div>
           {filtered.length ? <div className="material-knowledge-grid">{filtered.map((item) => (
-            <Card key={item.id} className="material-knowledge-card" interactive><button onClick={() => setSelected(item)}><div className="badge-row"><Badge tone="primary">{SUBJECT_DISPLAY_NAMES[item.subject as SupportedSubject] || item.subject}</Badge><Badge>{item.grade}</Badge><Badge tone="success">{resourceKinds.find((kind) => kind.value === item.resourceKind)?.label || '资料'}</Badge></div><h3>{item.title}</h3><p>{item.content}</p><div className="material-path">{item.bookTitle || '未匹配书册'} · {item.chapter} / {item.knowledgePoint}</div><div className="tag-row">{item.tags.slice(0, 5).map((tag) => <span key={tag}>#{tag}</span>)}</div></button></Card>
+            <Card key={item.id} className="material-knowledge-card" interactive><button type="button" onClick={() => setSelected(item)}><div className="badge-row"><Badge tone="primary">{SUBJECT_DISPLAY_NAMES[item.subject as SupportedSubject] || item.subject}</Badge><Badge>{item.grade || '年级未设置'}</Badge><Badge tone="success">{resourceKinds.find((kind) => kind.value === item.resourceKind)?.label || '资料'}</Badge></div><h3>{item.title}</h3><p>{item.content}</p><div className="material-path">{item.bookTitle || '未匹配书册'} · {item.chapter} / {item.knowledgePoint}</div><div className="tag-row">{item.tags.slice(0, 5).map((tag) => <span key={tag}>#{tag}</span>)}</div></button></Card>
           ))}</div> : !loading && <Card><EmptyState title="没有匹配内容" description="调整筛选条件，或在“补充资料”中上传教材与练习册。" /></Card>}
         </>
       )}
@@ -327,8 +351,22 @@ export function KnowledgeBasePage() {
         </div>
       )}
 
+
+      <Modal open={Boolean(bindingJob)} title="手动绑定书册" onClose={() => { setBindingJob(null); setBindingBookId('') }}>
+        {bindingJob && <div className="material-binding-form">
+          <p>为“{bindingJob.fileName}”选择正式书册。绑定会立即修正已有知识条目；需要重新提取时，再点击“重新解析”。</p>
+          <label>书册
+            <select value={bindingBookId} onChange={(event) => setBindingBookId(event.target.value)}>
+              <option value="">请选择书册</option>
+              {FIXED_SUBJECTS.map((subject) => <optgroup key={subject} label={SUBJECT_DISPLAY_NAMES[subject]}>{getBooksBySubject(subject).map((book) => <option key={book.id} value={book.id}>{book.shortTitle}（{book.grade}）</option>)}</optgroup>)}
+            </select>
+          </label>
+          <div className="modal-actions"><Button variant="secondary" onClick={() => { setBindingJob(null); setBindingBookId('') }}>取消</Button><Button onClick={() => void handleBinding()} disabled={busy || !bindingBookId}>{busy ? '保存中…' : '确认绑定'}</Button></div>
+        </div>}
+      </Modal>
+
       <Modal open={Boolean(selected)} title={selected?.title || '知识条目'} onClose={() => setSelected(null)} size="lg">
-        {selected && <div className="knowledge-detail"><div className="badge-row"><Badge tone="primary">{selected.subject}</Badge><Badge>{selected.grade}</Badge><Badge>{selected.bookTitle || selected.chapter}</Badge></div><div className="detail-block"><span>知识点</span><p>{selected.knowledgePoint}</p></div><div className="detail-block"><span>内容</span><p>{selected.content}</p></div><div className="answer-compare"><div><span>核心结论</span><p>{selected.answer || '—'}</p></div><div><span>理解说明</span><p>{selected.explanation || '—'}</p></div></div><div className="detail-block"><span>来源</span><p><FileText size={15} /> {selected.sourceName || selected.sourceFile || '家庭资料'}</p></div></div>}
+        {selected && <div className="knowledge-detail"><div className="badge-row"><Badge tone="primary">{selected.subject}</Badge><Badge>{selected.grade || '年级未设置'}</Badge><Badge>{selected.bookTitle || selected.chapter}</Badge></div><div className="detail-block"><span>知识点</span><p>{selected.knowledgePoint}</p></div><div className="detail-block"><span>内容</span><p>{selected.content}</p></div><div className="answer-compare"><div><span>核心结论</span><p>{selected.answer || '—'}</p></div><div><span>理解说明</span><p>{selected.explanation || '—'}</p></div></div><div className="detail-block"><span>来源</span><p><FileText size={15} /> {selected.sourceName || selected.sourceFile || '家庭资料'}</p></div></div>}
       </Modal>
     </div>
   )

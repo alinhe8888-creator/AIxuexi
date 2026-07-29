@@ -15,12 +15,12 @@ const items = [
 
 export function ParentLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
-  const { children: linkedChildren, refresh, loading } = useParentData()
+  const { children: linkedChildren, selectedChildId, refresh, loading } = useParentData()
   const location = useLocation()
   const current = items.find((item) =>
     item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
   )
-  const child = linkedChildren[0]
+  const child = linkedChildren.find((item) => item.id === selectedChildId) ?? linkedChildren[0]
 
   return (
     <div className="parent-shell">
@@ -58,7 +58,7 @@ export function ParentLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <button className="parent-logout" onClick={logout}>
+        <button type="button" className="parent-logout" onClick={logout}>
           <LogOut size={17} />
           退出
         </button>

@@ -1,8 +1,8 @@
 import { AlertCircle, CheckCircle2, ChevronRight, Inbox, LoaderCircle, X } from 'lucide-react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
-export function Button({ variant = 'primary', size = 'md', className = '', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'; size?: 'sm' | 'md' | 'lg' }) {
-  return <button className={`btn btn-${variant} btn-${size} ${className}`} {...props}>{children}</button>
+export function Button({ variant = 'primary', size = 'md', type = 'button', className = '', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'; size?: 'sm' | 'md' | 'lg' }) {
+  return <button type={type} className={`btn btn-${variant} btn-${size} ${className}`} {...props}>{children}</button>
 }
 
 export function Card({ children, className = '', interactive = false }: { children: ReactNode; className?: string; interactive?: boolean }) {
@@ -84,7 +84,7 @@ export function SectionTitle({ title, description, action }: { title: string; de
 }
 
 export function IconLink({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
-  return <button className="icon-link" onClick={onClick}>{children}<ChevronRight size={16} /></button>
+  return <button type="button" className="icon-link" onClick={onClick}>{children}<ChevronRight size={16} /></button>
 }
 
 export function Modal({ open, title, children, footer, onClose, size = 'md' }: { open: boolean; title: string; children: ReactNode; footer?: ReactNode; onClose: () => void; size?: 'sm' | 'md' | 'lg' }) {
@@ -92,7 +92,7 @@ export function Modal({ open, title, children, footer, onClose, size = 'md' }: {
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.currentTarget === event.target && onClose()}>
       <div className={`modal modal-${size}`} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="modal-header"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={20} /></button></div>
+        <div className="modal-header"><h2>{title}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="关闭"><X size={20} /></button></div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
@@ -101,5 +101,5 @@ export function Modal({ open, title, children, footer, onClose, size = 'md' }: {
 }
 
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: Array<{ value: T; label: string }>; onChange: (value: T) => void }) {
-  return <div className="segmented">{options.map((option) => <button key={option.value} className={value === option.value ? 'active' : ''} onClick={() => onChange(option.value)}>{option.label}</button>)}</div>
+  return <div className="segmented">{options.map((option) => <button type="button" key={option.value} className={value === option.value ? 'active' : ''} onClick={() => onChange(option.value)}>{option.label}</button>)}</div>
 }

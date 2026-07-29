@@ -12,24 +12,23 @@ const asyncRoute = (
   void handler(req as AuthenticatedRequest, res).catch(next)
 }
 
+function familyConfigurationError(message: string) {
+  const error = new Error(message) as Error & { status: number; expose: boolean }
+  error.status = 503
+  error.expose = true
+  return error
+}
+
 async function ensureFamilyStudent(parentId: string) {
-  const email = (process.env.FAMILY_STUDENT_EMAIL ?? '').trim().toLowerCase()
-  if (!email) throw new Error('Render 尚未配置 FAMILY_STUDENT_EMAIL')
+  const email = (process.env.FAMILY_STUDENT_EMAIL || process.env.PRIVATE_STUDENT_EMAIL || '').trim().toLowerCase()
+  if (!email) throw familyConfigurationError('家庭学生账号尚未配置')
   const student = await store.findUserByEmail(email)
   if (!student || student.role !== 'student') {
-    throw new Error('FAMILY_STUDENT_EMAIL 对应的学生账号不存在')
+    throw familyConfigurationError('家庭学生账号配置无效')
   }
   await store.linkParentToStudent(parentId, student.id)
   return student.id
 }
-
-router.post('/auth/student/register', (_req, res) => {
-  res.status(403).json({ message: '家庭自用系统已关闭注册' })
-})
-
-router.post('/auth/parent/register', (_req, res) => {
-  res.status(403).json({ message: '家庭自用系统已关闭注册' })
-})
 
 router.post('/parent/link', ...parentOnly, asyncRoute(async (req, res) => {
   const studentId = await ensureFamilyStudent(req.user!.id)
@@ -66,6 +65,7 @@ router.get(
           id: row.id,
           email: row.email,
           displayName: row.displayName,
+          lastSyncedAt: row.snapshotUpdatedAt,
         },
       ),
     })

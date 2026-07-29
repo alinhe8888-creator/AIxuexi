@@ -64,11 +64,100 @@ export function getBookById(id: string) {
   return textbookBooks.find((book) => book.id === id)
 }
 
+const normalizeBookText = (value: string) => value
+  .replace(/[\s·（）()【】\[\]_-]+/g, '')
+  .replace(/第一/g, '1')
+  .replace(/第二/g, '2')
+  .replace(/第三/g, '3')
+  .replace(/第四/g, '4')
+  .replace(/一/g, '1')
+  .replace(/二/g, '2')
+  .replace(/三/g, '3')
+  .replace(/四/g, '4')
+  .replace(/第/g, '')
+  .toLowerCase()
+
+const subjectTerms: Record<SupportedSubject, string[]> = {
+  语文: ['语文'],
+  数学: ['数学'],
+  英语: ['英语', '外研'],
+  历史: ['历史'],
+  地理: ['地理'],
+  政治: ['思想政治', '政治'],
+}
+
+function subjectFromBookText(text: string): SupportedSubject | undefined {
+  const normalized = normalizeBookText(text)
+  const matched = subjectValues.filter((subject) => subjectTerms[subject].some((term) => normalized.includes(normalizeBookText(term))))
+  return matched.length === 1 ? matched[0] : undefined
+}
+
+function volumeFromBookText(text: string) {
+  const normalized = normalizeBookText(text)
+  const match = /(?:选择性必修|选必|必修)([1-4])/.exec(normalized)
+  return match?.[1] || ''
+}
+
+function volumeMarker(text: string) {
+  const normalized = normalizeBookText(text)
+  if (normalized.includes('上册') || normalized.includes('纲要上')) return 'up'
+  if (normalized.includes('中册')) return 'middle'
+  if (normalized.includes('下册') || normalized.includes('纲要下')) return 'down'
+  return ''
+}
+
+function bookMatchScore(book: BackendBookCatalogItem, text: string) {
+  const normalized = normalizeBookText(text)
+  const aliases = [book.title, ...book.aliases].map(normalizeBookText)
+  let aliasScore = 0
+  for (const alias of aliases) {
+    if (normalized === alias) aliasScore = Math.max(aliasScore, 120)
+    else if (alias.length >= 3 && normalized.includes(alias)) aliasScore = Math.max(aliasScore, 55 + Math.min(20, alias.length / 2))
+    else if (normalized.length >= 4 && alias.includes(normalized)) aliasScore = Math.max(aliasScore, 38 + Math.min(16, normalized.length / 3))
+  }
+
+  const asksSelective = normalized.includes('选择性必修') || normalized.includes('选必')
+  const asksRequired = !asksSelective && normalized.includes('必修')
+  if (asksSelective && book.category !== '选择性必修') return Number.NEGATIVE_INFINITY
+  if (asksRequired && book.category !== '必修') return Number.NEGATIVE_INFINITY
+
+  const requestedVolume = volumeFromBookText(text)
+  const candidateVolume = volumeFromBookText(book.title)
+  if (requestedVolume && candidateVolume && requestedVolume !== candidateVolume) return Number.NEGATIVE_INFINITY
+  if (requestedVolume && !candidateVolume) return Number.NEGATIVE_INFINITY
+
+  const requestedMarker = volumeMarker(text)
+  const candidateMarker = volumeMarker(book.title)
+  if (requestedMarker && candidateMarker && requestedMarker !== candidateMarker) return Number.NEGATIVE_INFINITY
+  if (requestedMarker && !candidateMarker) return Number.NEGATIVE_INFINITY
+
+  const subjectScore = subjectTerms[book.subject].some((term) => normalized.includes(normalizeBookText(term))) ? 16 : 0
+  const categoryScore = asksSelective || asksRequired ? 12 : 0
+  const volumeScore = requestedVolume && requestedVolume === candidateVolume ? 28 : 0
+  const markerScore = requestedMarker && requestedMarker === candidateMarker ? 28 : 0
+  return aliasScore + subjectScore + categoryScore + volumeScore + markerScore
+}
+
+function uniqueBest(candidates: Array<{ book: BackendBookCatalogItem; score: number }>, minimum: number) {
+  const ranked = candidates.filter((item) => Number.isFinite(item.score)).sort((left, right) => right.score - left.score)
+  const best = ranked[0]
+  const second = ranked[1]
+  if (!best || best.score < minimum) return undefined
+  if (second && best.score === second.score) return undefined
+  return best.book
+}
+
 export function matchBook(subject: SupportedSubject, text: string) {
-  const normalized = text.replace(/\s+/g, '').toLowerCase()
-  const candidates = textbookBooks.filter((book) => book.subject === subject).map((book) => ({
-    book,
-    score: [book.title, ...book.aliases].filter((alias) => normalized.includes(alias.replace(/\s+/g, '').toLowerCase())).length,
-  })).sort((left, right) => right.score - left.score)
-  return candidates[0]?.score ? candidates[0].book : undefined
+  return uniqueBest(
+    textbookBooks.filter((book) => book.subject === subject).map((book) => ({ book, score: bookMatchScore(book, text) })),
+    12,
+  )
+}
+
+export function matchAnyBook(text: string) {
+  const explicitSubject = subjectFromBookText(text)
+  if (explicitSubject) return matchBook(explicitSubject, text)
+  const normalized = normalizeBookText(text)
+  if (normalized.includes('必修') || normalized.includes('选必')) return undefined
+  return uniqueBest(textbookBooks.map((book) => ({ book, score: bookMatchScore(book, text) })), 20)
 }
